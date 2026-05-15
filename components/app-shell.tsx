@@ -1,14 +1,11 @@
 import Link from "next/link";
 import {
   Box,
-  Home,
-  ListChecks,
   PackageSearch,
   ReceiptText,
   Settings,
   Smartphone,
-  Tags,
-  Utensils
+  Tags
 } from "lucide-react";
 import { cx } from "@/lib/utils";
 import { AuthStatus } from "@/components/auth-status";
@@ -25,9 +22,6 @@ const navSections: { title: string; items: NavItem[] }[] = [
   {
     title: "Daglig bruk",
     items: [
-      { label: "Oversikt", href: "/dashboard", icon: Home, description: "Hva bør gjøres nå" },
-      { label: "Handleliste", href: "/shopping-list", icon: ListChecks, aliases: ["Handleplan"], description: "Neste handletur" },
-      { label: "Middager", href: "/meals", icon: Utensils, description: "Forslag fra lager" },
       { label: "Priser", href: "/prices", icon: Tags, aliases: ["Prissammenligning"], description: "Billigste butikk" }
     ]
   },
@@ -50,7 +44,6 @@ const navSections: { title: string; items: NavItem[] }[] = [
 
 const quickActions = [
   { label: "Skann", href: "/mobile" },
-  { label: "Handleliste", href: "/shopping-list" },
   { label: "Legg til vare", href: "/products" }
 ] as const;
 
@@ -63,7 +56,7 @@ export function AppShell({ active, children }: { active: string; children: React
     <main className="min-h-screen bg-[#f6f7f5] p-2 sm:p-4">
       <div className="mx-auto flex min-h-[calc(100vh-1rem)] max-w-[1500px] flex-col overflow-hidden rounded-3xl border border-line bg-white shadow-soft sm:min-h-[calc(100vh-2rem)] lg:flex-row">
         <aside className="shrink-0 border-b border-line bg-white p-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:w-64 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:p-5">
-          <Link href="/dashboard" className="mb-4 flex items-center gap-3 text-xl font-bold text-brand lg:mb-8">
+          <Link href="/prices" className="mb-4 flex items-center gap-3 text-xl font-bold text-brand lg:mb-8">
             <span className="grid h-10 w-10 place-items-center rounded-2xl bg-brand-soft">🛒</span>
             <span>Husholdning</span>
           </Link>

@@ -94,10 +94,10 @@ export default function DashboardPage() {
     : "Importer produkter for å bygge basisutvalg";
 
   return (
-    <AppShell active="Oversikt">
+    <AppShell active="Priser">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="page-heading">Oversikt</h1>
+          <h1 className="page-heading">Priser</h1>
           <p className="page-subtitle">Prissammenligning og handleinnsikt basert på basisutvalget til husholdningen.</p>
         </div>
         <button onClick={loadBasisPrices} className="rounded-xl border border-line px-4 py-2 text-sm font-medium text-brand">

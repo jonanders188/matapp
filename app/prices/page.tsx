@@ -128,7 +128,7 @@ export default function PricesPage() {
     : "Importer eller lagre produkter som basisutvalg";
 
   return (
-    <AppShell active="Prissammenligning">
+    <AppShell active="Priser">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="page-heading">Prissammenligning</h1>
@@ -178,7 +178,6 @@ export default function PricesPage() {
                 <thead className="bg-slate-50 text-xs uppercase text-muted">
                   <tr>
                     <th className="p-4">Produkt</th>
-                    <th>Basisbehov</th>
                     {visibleStores.map((store) => <th key={store.storeKey}>{store.store}</th>)}
                   </tr>
                 </thead>
@@ -209,10 +208,6 @@ export default function PricesPage() {
                             <p className="text-xs text-muted">{product.subtitle || "Basisvare"}</p>
                           </div>
                         </div>
-                      </td>
-                      <td>
-                        <span className="font-medium">{product.desiredQuantity}</span>
-                        <span className="ml-1 text-xs text-muted">ønsket</span>
                       </td>
                       {visibleStores.map((store) => {
                         const price = product.storePrices[store.storeKey];
