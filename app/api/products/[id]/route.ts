@@ -67,7 +67,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
 
     if (priceResult.error) throw priceResult.error;
 
-    const lowestByStore = new Map<string, { store_name: string; price: number; unit_price: number | null; observed_at: string }>();
+    const lowestByStore = new Map<string, { store_name: string; price: number; unit_price: number | null; observed_at: string; source: string | null; source_url: string | null }>();
     for (const observation of priceResult.data ?? []) {
       const key = observation.store_name || observation.store_code;
       const existing = lowestByStore.get(key);
@@ -76,7 +76,9 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
           store_name: observation.store_name,
           price: observation.price,
           unit_price: observation.unit_price,
-          observed_at: observation.observed_at
+          observed_at: observation.observed_at,
+          source: observation.source,
+          source_url: observation.source_url
         });
       }
     }

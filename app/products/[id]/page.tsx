@@ -54,12 +54,39 @@ type DetailPayload = {
   product: Product;
   inventory: InventoryItem[];
   price_observations: Observation[];
-  lowest_by_store: Array<{ store_name: string; price: number; unit_price: number | null; observed_at: string }>;
+  lowest_by_store: Array<{ store_name: string; price: number; unit_price: number | null; observed_at: string; source: string | null; source_url: string | null }>;
 };
 
 function shortDate(value?: string | null) {
   return value ? value.slice(0, 10) : "-";
 }
+
+function shortDateTime(value?: string | null) {
+  if (!value) return "-";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value.slice(0, 16).replace("T", " ");
+  return new Intl.DateTimeFormat("nb-NO", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(parsed);
+}
+
+function priceSourceLabel(source?: string | null) {
+  const normalized = String(source ?? "").trim().toLowerCase();
+
+  if (!normalized) return "Ukjent kilde";
+  if (normalized.includes("receipt")) return "Kvittering";
+  if (normalized.includes("shelf")) return "Hyllekant";
+  if (normalized.includes("manual")) return "Manuelt";
+  if (normalized.includes("kassalapp")) return "Kassalapp API";
+  if (normalized.includes("mobile-scan")) return "Kassalapp API";
+
+  return source ?? "Ukjent kilde";
+}
+
 
 function toFormValue(value: string | number | boolean | null | undefined) {
   if (value === null || value === undefined) return "";
@@ -208,10 +235,10 @@ export default function ProductRulesPage() {
             </div>
 
             <div className="grid grid-cols-4 gap-5">
-              <StatCard title="Siste pris" value={kr(latest?.price ?? null)} subtitle={latest?.store_name ?? "Ingen prisdata"} />
+              <StatCard title="Siste pris" value={kr(latest?.price ?? null)} subtitle={latest ? `${latest.store_name} · ${priceSourceLabel(latest.source)}` : "Ingen prisdata"} />
               <StatCard title="Målpris" value={kr(data.product.target_price)} subtitle={data.product.target_price_unit === "unit_price" ? "Per enhet" : "Per stk/pakke"} tone="amber" />
               <StatCard title="Lager" value={`${stockTotal} / ${desiredTotal}`} subtitle="Faktisk / ønsket" tone={stockTotal < desiredTotal ? "red" : "green"} />
-              <StatCard title="Prisobservasjoner" value={String(data.price_observations.length)} subtitle={`Sist ${shortDate(latest?.observed_at)}`} tone="blue" />
+              <StatCard title="Prisobservasjoner" value={String(data.price_observations.length)} subtitle={latest ? `Sist ${shortDateTime(latest.observed_at)} · ${priceSourceLabel(latest.source)}` : "Ingen prisdata"} tone="blue" />
             </div>
           </section>
 
@@ -272,7 +299,10 @@ export default function ProductRulesPage() {
                 <div className="mt-4 space-y-2">
                   {data.lowest_by_store.slice(0, 8).map((item) => (
                     <div key={`${item.store_name}-${item.observed_at}`} className="flex items-center justify-between rounded-xl bg-slate-50 p-3 text-sm">
-                      <div><p className="font-medium">{item.store_name}</p><p className="text-xs text-muted">{shortDate(item.observed_at)}</p></div>
+                      <div>
+                        <p className="font-medium">{item.store_name}</p>
+                        <p className="text-xs text-muted">{shortDateTime(item.observed_at)} · {priceSourceLabel(item.source)}</p>
+                      </div>
                       <p className="font-bold text-brand">{kr(item.price)}</p>
                     </div>
                   ))}
