@@ -53,6 +53,89 @@ function productPayload(product: KassalappProduct, householdId: string) {
   };
 }
 
+type HouseholdProductRow = {
+  product_id: string;
+  is_basis: boolean | null;
+  desired_stock: number | null;
+  target_price: number | null;
+  target_price_unit: string | null;
+  preferred_store: string | null;
+  is_freezable: boolean | null;
+  notes: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+type ProductRow = {
+  id: string;
+  name: string;
+  brand: string | null;
+  ean: string | null;
+  category: string | null;
+  package_size: string | null;
+  image_url: string | null;
+  target_price: number | null;
+  preferred_store: string | null;
+  desired_stock: number | null;
+  is_basis: boolean | null;
+  created_at: string | null;
+  target_price_unit?: string | null;
+  is_freezable?: boolean | null;
+  notes?: string | null;
+};
+
+function householdProductPayload(householdId: string, productId: string, product: KassalappProduct) {
+  return {
+    household_id: householdId,
+    product_id: productId,
+    is_basis: true,
+    desired_stock: 1,
+    target_price: product.current_price ?? null,
+    target_price_unit: product.current_unit_price ? "unit_price" : "unit",
+    preferred_store: product.store?.name ?? null,
+    is_freezable: false,
+    notes: product.url ?? null,
+    updated_at: new Date().toISOString()
+  };
+}
+
+function mergeHouseholdProduct(product: ProductRow, householdProduct?: HouseholdProductRow | null) {
+  if (!householdProduct) return product;
+
+  return {
+    ...product,
+    is_basis: householdProduct.is_basis ?? product.is_basis,
+    desired_stock: householdProduct.desired_stock ?? product.desired_stock,
+    target_price: householdProduct.target_price ?? product.target_price,
+    target_price_unit: householdProduct.target_price_unit ?? product.target_price_unit,
+    preferred_store: householdProduct.preferred_store ?? product.preferred_store,
+    is_freezable: householdProduct.is_freezable ?? product.is_freezable,
+    notes: householdProduct.notes ?? product.notes,
+    household_product_updated_at: householdProduct.updated_at
+  };
+}
+
+async function ensureHouseholdProduct(householdId: string, productId: string, product: KassalappProduct) {
+  const supabase = getSupabaseAdmin();
+  const payload = householdProductPayload(householdId, productId, product);
+
+  const existing = await supabase
+    .from("household_products")
+    .select("id")
+    .eq("household_id", householdId)
+    .eq("product_id", productId)
+    .limit(1);
+
+  if (existing.error) throw existing.error;
+
+  const result = existing.data?.[0]
+    ? await supabase.from("household_products").update(payload).eq("id", existing.data[0].id).select("*").single()
+    : await supabase.from("household_products").insert(payload).select("*").single();
+
+  if (result.error) throw result.error;
+  return result.data;
+}
+
 async function ensureInventoryItem(householdId: string, productId: string, product: KassalappProduct) {
   const supabase = getSupabaseAdmin();
   const location = product.category?.some((category) => category.name.toLowerCase().includes("melk"))
@@ -108,17 +191,51 @@ export async function GET(request: Request) {
     const supabase = getSupabaseAdmin();
     const { householdId } = await requireCurrentHousehold(request);
 
-    // Hold produktselecten enkel. Vi henter prisobservasjoner separat for å unngå
-    // PostgREST-relasjonsfeil når Supabase schema-cache ikke er ferdig oppdatert.
-    const { data, error } = await supabase
-      .from("products")
-      .select("id, name, brand, ean, category, package_size, image_url, target_price, preferred_store, desired_stock, is_basis, created_at")
+    const householdProductsResult = await supabase
+      .from("household_products")
+      .select("product_id, is_basis, desired_stock, target_price, target_price_unit, preferred_store, is_freezable, notes, created_at, updated_at")
       .eq("household_id", householdId)
       .order("created_at", { ascending: false });
 
-    if (error) throw error;
+    if (householdProductsResult.error) throw householdProductsResult.error;
 
-    const products = data ?? [];
+    const householdProducts = (householdProductsResult.data ?? []) as HouseholdProductRow[];
+    const householdByProductId = new Map(householdProducts.map((row) => [row.product_id, row]));
+    const householdProductIds = householdProducts.map((row) => row.product_id).filter(Boolean);
+
+    let products: ProductRow[] = [];
+
+    if (householdProductIds.length) {
+      const productsResult = await supabase
+        .from("products")
+        .select("id, name, brand, ean, category, package_size, image_url, target_price, target_price_unit, preferred_store, desired_stock, is_basis, is_freezable, notes, created_at")
+        .in("id", householdProductIds);
+
+      if (productsResult.error) throw productsResult.error;
+
+      const productsById = new Map((productsResult.data ?? []).map((product) => [product.id, product as ProductRow]));
+      products = householdProductIds
+        .map((productId) => {
+          const product = productsById.get(productId);
+          if (!product) return null;
+          return mergeHouseholdProduct(product, householdByProductId.get(productId));
+        })
+        .filter(Boolean) as ProductRow[];
+    }
+
+    // Fallback while the app still has older products that have not been copied
+    // into household_products. This can be removed after the migration is fully stable.
+    if (!products.length) {
+      const fallback = await supabase
+        .from("products")
+        .select("id, name, brand, ean, category, package_size, image_url, target_price, target_price_unit, preferred_store, desired_stock, is_basis, is_freezable, notes, created_at")
+        .eq("household_id", householdId)
+        .order("created_at", { ascending: false });
+
+      if (fallback.error) throw fallback.error;
+      products = (fallback.data ?? []) as ProductRow[];
+    }
+
     const productIds = products.map((product) => product.id);
 
     if (!productIds.length) {
@@ -199,31 +316,44 @@ export async function POST(request: Request) {
     const { householdId } = await requireCurrentHousehold(request);
     const payload = productPayload(product, householdId);
 
-    const existingQuery = product.ean
-      ? supabase
-          .from("products")
-          .select("id")
-          .eq("household_id", householdId)
-          .eq("ean", product.ean)
-          .order("created_at", { ascending: true })
-          .limit(1)
-      : supabase
-          .from("products")
-          .select("id")
-          .eq("household_id", householdId)
-          .eq("kassalapp_id", product.id)
-          .order("created_at", { ascending: true })
-          .limit(1);
+    let existingRows: Array<{ id: string; household_id: string | null; created_at: string | null }> = [];
 
-    const existing = await existingQuery;
-    if (existing.error) throw existing.error;
+    if (product.ean) {
+      const existing = await supabase
+        .from("products")
+        .select("id, household_id, created_at")
+        .eq("ean", product.ean)
+        .order("created_at", { ascending: true })
+        .limit(10);
 
-    const existingProduct = existing.data?.[0];
+      if (existing.error) throw existing.error;
+      existingRows = existing.data ?? [];
+    }
+
+    if (!existingRows.length) {
+      const existing = await supabase
+        .from("products")
+        .select("id, household_id, created_at")
+        .eq("kassalapp_id", product.id)
+        .order("created_at", { ascending: true })
+        .limit(10);
+
+      if (existing.error) throw existing.error;
+      existingRows = existing.data ?? [];
+    }
+
+    const existingProduct =
+      existingRows.find((row) => row.household_id === householdId) ??
+      existingRows.find((row) => row.household_id === null) ??
+      existingRows[0];
+
     const result = existingProduct
       ? await supabase.from("products").update(payload).eq("id", existingProduct.id).select("*").single()
       : await supabase.from("products").insert(payload).select("*").single();
 
     if (result.error) throw result.error;
+
+    const householdProduct = await ensureHouseholdProduct(householdId, result.data.id, product);
 
     const warnings: string[] = [];
     const inventoryWarning = await ensureInventoryItem(householdId, result.data.id, product);
@@ -233,7 +363,11 @@ export async function POST(request: Request) {
     if (priceResult.error) warnings.push(priceResult.error);
 
     return NextResponse.json({
-      data: result.data,
+      data: {
+        ...result.data,
+        ...mergeHouseholdProduct(result.data, householdProduct)
+      },
+      household_product: householdProduct,
       warnings,
       priceObservationsInserted: priceResult.inserted
     });
