@@ -33,6 +33,11 @@ type PriceObservationRow = {
   price: number;
   unit_price: number | null;
   observed_at: string;
+  source: string | null;
+  household_id: string | null;
+  observed_by_household_id: string | null;
+  scope: string | null;
+  visibility: string | null;
 };
 
 type ProductComparison = {
@@ -59,6 +64,16 @@ type StorePreferenceRow = {
   store_name: string;
   priority: number | null;
   is_enabled: boolean | null;
+};
+
+type PriceSourcePreferenceRow = {
+  include_kassalapp: boolean | null;
+  include_own_shelf_edge: boolean | null;
+  include_other_shelf_edge: boolean | null;
+  include_own_receipt: boolean | null;
+  include_other_receipt: boolean | null;
+  include_own_manual: boolean | null;
+  include_other_manual: boolean | null;
 };
 
 type StoreComparison = {
@@ -103,6 +118,78 @@ function storeKey(observation: Pick<PriceObservationRow, "store_code" | "store_n
 
 function observationKey(observation: PriceObservationRow) {
   return `${observation.product_id}:${storeKey(observation)}`;
+}
+
+type PriceSourceCategory = "kassalapp" | "shelf-edge" | "receipt" | "manual";
+
+const DEFAULT_PRICE_SOURCE_PREFERENCES: PriceSourcePreferenceRow = {
+  include_kassalapp: true,
+  include_own_shelf_edge: true,
+  include_other_shelf_edge: true,
+  include_own_receipt: true,
+  include_other_receipt: false,
+  include_own_manual: true,
+  include_other_manual: false
+};
+
+function normalizePriceSource(source: unknown) {
+  return String(source ?? "").trim().toLowerCase();
+}
+
+function priceSourceCategory(source: unknown): PriceSourceCategory {
+  const normalized = normalizePriceSource(source);
+
+  if (normalized.includes("kassalapp")) return "kassalapp";
+  if (normalized.includes("receipt") || normalized.includes("kvittering")) return "receipt";
+  if (normalized.includes("manual") || normalized.includes("manuell")) return "manual";
+
+  // Hyllekant og mobile-scan regnes som skannede butikkpriser i filteret.
+  return "shelf-edge";
+}
+
+function boolPref(value: boolean | null | undefined, fallback: boolean) {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function isOwnPriceObservation(observation: PriceObservationRow, householdId: string) {
+  return observation.observed_by_household_id === householdId || observation.household_id === householdId;
+}
+
+function isPriceObservationAllowed(
+  observation: PriceObservationRow,
+  preferences: PriceSourcePreferenceRow,
+  householdId: string
+) {
+  if (observation.visibility === "private" && observation.household_id !== householdId) {
+    return false;
+  }
+
+  if (observation.scope === "household" && observation.household_id && observation.household_id !== householdId) {
+    return false;
+  }
+
+  const category = priceSourceCategory(observation.source);
+  const isOwn = isOwnPriceObservation(observation, householdId);
+
+  if (category === "kassalapp") {
+    return boolPref(preferences.include_kassalapp, true);
+  }
+
+  if (category === "receipt") {
+    return isOwn
+      ? boolPref(preferences.include_own_receipt, true)
+      : boolPref(preferences.include_other_receipt, false);
+  }
+
+  if (category === "manual") {
+    return isOwn
+      ? boolPref(preferences.include_own_manual, true)
+      : boolPref(preferences.include_other_manual, false);
+  }
+
+  return isOwn
+    ? boolPref(preferences.include_own_shelf_edge, true)
+    : boolPref(preferences.include_other_shelf_edge, true);
 }
 
 async function loadLegacyBasisProducts(supabase: ReturnType<typeof getSupabaseAdmin>, householdId: string) {
@@ -187,7 +274,8 @@ export async function GET(request: Request) {
     const [
       { data: inventoryData, error: inventoryError },
       { data: observationsData, error: observationsError },
-      { data: storePreferencesData, error: storePreferencesError }
+      { data: storePreferencesData, error: storePreferencesError },
+      { data: priceSourcePreferencesData, error: priceSourcePreferencesError }
     ] = await Promise.all([
       supabase
         .from("inventory_items")
@@ -196,19 +284,38 @@ export async function GET(request: Request) {
         .in("product_id", productIds),
       supabase
         .from("price_observations")
-        .select("product_id, store_code, store_name, price, unit_price, observed_at")
+        .select("product_id, store_code, store_name, price, unit_price, observed_at, source, household_id, observed_by_household_id, scope, visibility")
         .in("product_id", productIds)
         .order("observed_at", { ascending: false })
         .limit(1500),
       supabase
         .from("household_store_preferences")
         .select("store_key, store_name, priority, is_enabled")
+        .eq("household_id", householdId),
+      supabase
+        .from("household_price_source_preferences")
+        .select("include_kassalapp, include_own_shelf_edge, include_other_shelf_edge, include_own_receipt, include_other_receipt, include_own_manual, include_other_manual")
         .eq("household_id", householdId)
+        .maybeSingle()
     ]);
 
     if (inventoryError) throw inventoryError;
     if (observationsError) throw observationsError;
     if (storePreferencesError) throw storePreferencesError;
+
+    const priceSourcePreferences = priceSourcePreferencesError
+      ? DEFAULT_PRICE_SOURCE_PREFERENCES
+      : {
+          ...DEFAULT_PRICE_SOURCE_PREFERENCES,
+          ...((priceSourcePreferencesData ?? {}) as Partial<PriceSourcePreferenceRow>)
+        };
+
+    if (priceSourcePreferencesError) {
+      console.warn(
+        "[api/dashboard/basis-prices] price source preferences lookup failed, using defaults",
+        priceSourcePreferencesError.message
+      );
+    }
 
     const storePreferences = new Map<string, StorePreferenceRow>();
     for (const preference of (storePreferencesData ?? []) as StorePreferenceRow[]) {
@@ -246,6 +353,8 @@ export async function GET(request: Request) {
 
     const latestByProductStore = new Map<string, PriceObservationRow>();
     for (const observation of (observationsData ?? []) as PriceObservationRow[]) {
+      if (!isPriceObservationAllowed(observation, priceSourcePreferences, householdId)) continue;
+
       const key = observationKey(observation);
       if (!latestByProductStore.has(key)) {
         latestByProductStore.set(key, observation);
