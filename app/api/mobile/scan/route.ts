@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { findKassalappProductsByEan, latestPriceDate, lookupKassalappProductsWithPricesByEan, normalizeCategory, packageSize, searchKassalappProducts, type KassalappProduct } from "@/lib/kassalapp";
+import { findKassalappProductsByEan, latestPriceDate, lookupKassalappProductsWithPricesByEan, normalizeCategory, packageSize, productMetadataPayload, searchKassalappProducts, type KassalappProduct } from "@/lib/kassalapp";
 import { apiErrorResponse, requireCurrentHousehold } from "@/lib/current-household";
 import { insertPriceObservations } from "@/lib/price-observations";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
@@ -44,7 +44,8 @@ function productPayload(product: KassalappProduct, householdId: string) {
     preferred_store: product.store?.name ?? null,
     desired_stock: 1,
     is_basis: true,
-    notes: product.url ?? null
+    notes: product.url ?? null,
+    ...productMetadataPayload(product)
   };
 }
 

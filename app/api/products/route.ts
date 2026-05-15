@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { normalizeCategory, packageSize, type KassalappProduct } from "@/lib/kassalapp";
+import { normalizeCategory, packageSize, productMetadataPayload, type KassalappProduct } from "@/lib/kassalapp";
 import { insertPriceObservations } from "@/lib/price-observations";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
 import { apiErrorResponse, requireCurrentHousehold } from "@/lib/current-household";
@@ -48,7 +48,8 @@ function productPayload(product: KassalappProduct, householdId: string) {
     preferred_store: product.store?.name ?? null,
     desired_stock: 1,
     is_basis: true,
-    notes: product.url ?? null
+    notes: product.url ?? null,
+    ...productMetadataPayload(product)
   };
 }
 

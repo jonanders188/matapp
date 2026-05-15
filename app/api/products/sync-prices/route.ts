@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdminAccess } from "@/lib/admin-guard";
 import { ensureDefaultHousehold } from "@/lib/db";
 import { requireCurrentHousehold } from "@/lib/current-household";
-import { lookupKassalappProductsWithPricesByEan, searchKassalappProducts, type KassalappProduct } from "@/lib/kassalapp";
+import { lookupKassalappProductsWithPricesByEan, productMetadataPayload, searchKassalappProducts, type KassalappProduct } from "@/lib/kassalapp";
 import { insertPriceObservations, priceProductsForProduct } from "@/lib/price-observations";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
 
@@ -76,6 +76,8 @@ export async function POST(request: Request) {
         if (exactLookup?.selected) {
           const result = await insertPriceObservations(product.id, exactLookup.selected, exactLookup.related, "kassalapp-sync");
           if (result.error) throw new Error(result.error);
+          const metadataUpdate = await supabase.from("products").update(productMetadataPayload(exactLookup.selected)).eq("id", product.id);
+          if (metadataUpdate.error) throw metadataUpdate.error;
           inserted += result.inserted;
           if (result.inserted > 0) matchedProducts += 1;
           continue;
@@ -90,6 +92,8 @@ export async function POST(request: Request) {
           const priceProducts = priceProductsForProduct(primary, candidates);
           const result = await insertPriceObservations(product.id, primary, priceProducts, "kassalapp-sync");
           if (result.error) throw new Error(result.error);
+          const metadataUpdate = await supabase.from("products").update(productMetadataPayload(primary)).eq("id", product.id);
+          if (metadataUpdate.error) throw metadataUpdate.error;
           inserted += result.inserted;
           if (result.inserted > 0) matchedProducts += 1;
         }

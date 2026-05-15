@@ -20,6 +20,8 @@ export type KassalappComparisonStore = {
   last_checked?: string | null;
 };
 
+export type KassalappCategory = { id?: number; depth?: number; name: string };
+
 export type KassalappProduct = {
   id: number;
   name: string;
@@ -28,13 +30,21 @@ export type KassalappProduct = {
   ean?: string | null;
   url?: string | null;
   image?: string | null;
-  category?: Array<{ id: number; depth: number; name: string }> | null;
+  category?: KassalappCategory[] | null;
   current_price?: number | null;
   current_unit_price?: number | null;
   weight?: number | null;
   weight_unit?: string | null;
   store?: KassalappStore | null;
   price_history?: KassalappPriceHistory[] | null;
+  description?: string | null;
+  ingredients?: unknown;
+  allergens?: unknown;
+  nutrition?: unknown;
+  nutrients?: unknown;
+  labels?: unknown;
+  raw?: unknown;
+  kassalapp?: { url?: string | null; image?: string | null; opengraph?: string | null } | null;
 };
 
 export type KassalappProductComparison = Partial<KassalappProduct> & {
@@ -50,10 +60,35 @@ export type KassalappSearchResponse = {
   meta?: Record<string, unknown>;
 };
 
+export type ProductMetadataPayload = {
+  description: string | null;
+  ingredients: string | null;
+  allergens: unknown | null;
+  nutrition: unknown | null;
+  labels: unknown | null;
+  category_path: string[] | null;
+  kassalapp_raw: unknown | null;
+};
+
 const BASE_URL = "https://kassal.app/api/v1";
 
 export function hasKassalappKey() {
   return Boolean(process.env.KASSALAPP_API_KEY);
+}
+
+function cleanEan(value: string) {
+  return String(value ?? "").replace(/\D/g, "").trim();
+}
+
+function looksLikeEan(value: string) {
+  const clean = cleanEan(value);
+  return clean.length >= 8 && clean.length <= 14 && clean === value.replace(/\s/g, "");
+}
+
+function queryValue(value: string | number | boolean | null | undefined) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "boolean") return value ? "true" : "false";
+  return String(value);
 }
 
 async function kassalappFetch<T>(path: string, init?: { searchParams?: Record<string, string | number | boolean | null | undefined>; revalidate?: number }) {
@@ -64,8 +99,9 @@ async function kassalappFetch<T>(path: string, init?: { searchParams?: Record<st
 
   const url = new URL(`${BASE_URL}${path}`);
   for (const [key, value] of Object.entries(init?.searchParams ?? {})) {
-    if (value !== null && value !== undefined && value !== "") {
-      url.searchParams.set(key, String(value));
+    const normalized = queryValue(value);
+    if (normalized !== null) {
+      url.searchParams.set(key, normalized);
     }
   }
 
@@ -81,30 +117,64 @@ async function kassalappFetch<T>(path: string, init?: { searchParams?: Record<st
 
   if (!response.ok) {
     const body = await response.text().catch(() => "");
-    throw new Error(`Kassalapp svarte ${response.status}: ${body.slice(0, 200)}`);
+    throw new Error(`Kassalapp svarte ${response.status}: ${body.slice(0, 500)}`);
   }
 
   return (await response.json()) as T;
 }
 
-export async function searchKassalappProducts(query: string, limit = 12) {
+async function searchProductsWithParams(query: string, limit: number, searchParams: Record<string, string | number | boolean>) {
   const payload = await kassalappFetch<KassalappSearchResponse>("/products", {
     searchParams: {
       search: query,
       size: Math.min(Math.max(limit, 1), 100),
-      exclude_without_ean: false,
-      unique: false
+      ...searchParams
     }
   });
 
   return payload?.data ?? [];
 }
 
-export async function lookupKassalappProductByEan(ean: string) {
-  const cleanEan = String(ean ?? "").replace(/\D/g, "");
-  if (!cleanEan) return null;
+export async function searchKassalappProducts(query: string, limit = 12) {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
 
-  const payload = await kassalappFetch<{ data?: KassalappProductComparison }>(`/products/ean/${encodeURIComponent(cleanEan)}`);
+  if (looksLikeEan(trimmed)) {
+    const eanProducts = await findKassalappProductsByEan(trimmed);
+    if (eanProducts.length) return eanProducts.slice(0, limit);
+  }
+
+  // Kassalapp dokumenterer exclude_without_ean og unique som boolean-parametere.
+  // Noen miljøer har likevel svart med valideringsfeil på boolske queryverdier,
+  // så vi prøver dokumentert format først, deretter 0/1, og til slutt uten disse.
+  try {
+    return await searchProductsWithParams(trimmed, limit, {
+      exclude_without_ean: false,
+      unique: false
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (!/exclude_without_ean|unique|true or false|boolean/i.test(message)) throw error;
+  }
+
+  try {
+    return await searchProductsWithParams(trimmed, limit, {
+      exclude_without_ean: 0,
+      unique: 0
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (!/exclude_without_ean|unique|true or false|boolean/i.test(message)) throw error;
+  }
+
+  return searchProductsWithParams(trimmed, limit, {});
+}
+
+export async function lookupKassalappProductByEan(ean: string) {
+  const clean = cleanEan(ean);
+  if (!clean) return null;
+
+  const payload = await kassalappFetch<{ data?: KassalappProductComparison }>(`/products/ean/${encodeURIComponent(clean)}`);
   return payload?.data ?? null;
 }
 
@@ -120,13 +190,14 @@ export function productsFromEanComparison(comparison: KassalappProductComparison
       const latestHistory = history.find((entry) => entry.store === storeCode);
 
       return {
+        ...comparison,
         id: Number(comparison.id ?? index + 1),
         name: comparison.name,
         brand: comparison.brand ?? null,
         vendor: comparison.vendor ?? null,
         ean,
-        url: comparison.url ?? null,
-        image: comparison.image ?? null,
+        url: comparison.url ?? comparison.kassalapp?.url ?? null,
+        image: comparison.image ?? comparison.kassalapp?.image ?? null,
         category: comparison.category ?? null,
         current_price: store.current_price ?? null,
         current_unit_price: store.current_unit_price ?? null,
@@ -147,13 +218,14 @@ export function productsFromEanComparison(comparison: KassalappProductComparison
     });
 
   const selected = related[0] ?? {
+    ...comparison,
     id: Number(comparison.id ?? 0),
     name: comparison.name,
     brand: comparison.brand ?? null,
     vendor: comparison.vendor ?? null,
     ean,
-    url: comparison.url ?? null,
-    image: comparison.image ?? null,
+    url: comparison.url ?? comparison.kassalapp?.url ?? null,
+    image: comparison.image ?? comparison.kassalapp?.image ?? null,
     category: comparison.category ?? null,
     current_price: comparison.current_price ?? null,
     current_unit_price: comparison.current_unit_price ?? null,
@@ -167,15 +239,26 @@ export function productsFromEanComparison(comparison: KassalappProductComparison
 }
 
 export async function lookupKassalappProductsWithPricesByEan(ean: string) {
+  const products = await findKassalappProductsByEan(ean);
+  if (products.length) return { selected: products[0], related: products };
+
   const comparison = await lookupKassalappProductByEan(ean);
   if (!comparison) return null;
   return productsFromEanComparison(comparison);
 }
 
-export function normalizeCategory(product: KassalappProduct) {
+export function categoryPath(product: Pick<KassalappProduct, "category">) {
   const categories = product.category ?? [];
-  const leaf = [...categories].sort((a, b) => b.depth - a.depth)[0];
-  return leaf?.name ?? null;
+  const names = [...categories]
+    .sort((a, b) => Number(a.depth ?? 0) - Number(b.depth ?? 0))
+    .map((category) => category.name)
+    .filter(Boolean);
+  return names.length ? names : null;
+}
+
+export function normalizeCategory(product: KassalappProduct) {
+  const path = categoryPath(product);
+  return path?.at(-1) ?? null;
 }
 
 export function packageSize(product: KassalappProduct) {
@@ -188,111 +271,90 @@ export function latestPriceDate(product: KassalappProduct) {
   return product.price_history?.[0]?.date ?? null;
 }
 
-
-type KassalappComparisonPrice = {
-  price?: number | null;
-  unit_price?: number | null;
-  date?: string | null;
-};
-
-type KassalappComparisonProduct = Omit<KassalappProduct, "id" | "store" | "current_price" | "current_unit_price"> & {
-  id: string | number;
-  store?: KassalappStore[] | KassalappStore | null;
-  current_price?: KassalappComparisonPrice[] | number | null;
-  current_unit_price?: number | null;
-  kassalapp?: { url?: string | null; opengraph?: string | null } | null;
-};
-
-type KassalappEanResponse = {
-  data?: {
-    ean?: string | null;
-    products?: KassalappComparisonProduct[];
-  };
-};
-
 function toNumberOrNull(value: unknown) {
   const number = typeof value === "number" ? value : Number(value);
   return Number.isFinite(number) ? number : null;
 }
 
-function normalizeStoreList(value: KassalappComparisonProduct["store"]) {
+function asArray<T>(value: T | T[] | null | undefined): T[] {
   if (!value) return [];
   return Array.isArray(value) ? value : [value];
 }
 
-function normalizePriceList(value: KassalappComparisonProduct["current_price"]) {
-  if (value == null) return [];
+function getPath(value: any, paths: string[][]) {
+  for (const path of paths) {
+    let current = value;
+    for (const key of path) current = current?.[key];
+    if (current !== undefined && current !== null && current !== "") return current;
+  }
+  return null;
+}
 
+function normalizeText(value: unknown) {
+  if (typeof value === "string") return value.trim() || null;
   if (Array.isArray(value)) {
-    return value;
+    const text = value
+      .map((item) => (typeof item === "string" ? item : item?.name ?? item?.text ?? item?.value ?? null))
+      .filter(Boolean)
+      .join(", ")
+      .trim();
+    return text || null;
   }
-
-  return [
-    {
-      price: value,
-      unit_price: null,
-      date: null
-    }
-  ];
-}
-
-function comparisonProductToStoreProducts(
-  comparisonProduct: KassalappComparisonProduct,
-  fallbackEan: string
-): KassalappProduct[] {
-  const stores = normalizeStoreList(comparisonProduct.store);
-  const prices = normalizePriceList(comparisonProduct.current_price);
-
-  if (!stores.length || !prices.length) {
-    return [];
+  if (value && typeof value === "object") {
+    const text = Object.values(value as Record<string, unknown>)
+      .map((item) => (typeof item === "string" ? item : null))
+      .filter(Boolean)
+      .join(", ")
+      .trim();
+    return text || null;
   }
-
-  return stores.flatMap((store, index) => {
-    const price = prices[index] ?? prices[0];
-    const currentPrice = toNumberOrNull(price?.price);
-
-    if (currentPrice == null) {
-      return [];
-    }
-
-    const currentUnitPrice = toNumberOrNull(price?.unit_price);
-    const priceDate = price?.date ?? null;
-
-    return [
-      {
-        ...comparisonProduct,
-        id: Number(comparisonProduct.id),
-        ean: comparisonProduct.ean ?? fallbackEan,
-        url: comparisonProduct.url ?? comparisonProduct.kassalapp?.url ?? null,
-        store,
-        current_price: currentPrice,
-        current_unit_price: currentUnitPrice,
-        price_history: priceDate
-          ? [
-              {
-                price: currentPrice,
-                date: priceDate
-              }
-            ]
-          : comparisonProduct.price_history ?? []
-      }
-    ];
-  });
+  return null;
 }
 
-
-function kassalappNumberOrNull(value: unknown) {
-  const number = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(number) ? number : null;
+function normalizeJson(value: unknown) {
+  if (value === undefined || value === null || value === "") return null;
+  return value;
 }
 
-function kassalappArray<T>(value: T | T[] | null | undefined): T[] {
-  if (!value) return [];
-  return Array.isArray(value) ? value : [value];
+export function productMetadataPayload(product: KassalappProduct): ProductMetadataPayload {
+  const raw = (product as any).raw ?? product;
+  const description = normalizeText(
+    getPath(product, [["description"], ["kassalapp", "description"], ["metadata", "description"]])
+  );
+  const ingredients = normalizeText(
+    getPath(product, [["ingredients"], ["ingredient_list"], ["ingredients_text"], ["metadata", "ingredients"]])
+  );
+  const allergens = normalizeJson(
+    getPath(product, [["allergens"], ["allergy"], ["metadata", "allergens"]])
+  );
+  const nutrition = normalizeJson(
+    getPath(product, [["nutrition"], ["nutrients"], ["nutrition_facts"], ["nutritional_info"], ["metadata", "nutrition"]])
+  );
+  const labels = normalizeJson(
+    getPath(product, [["labels"], ["label"], ["tags"], ["metadata", "labels"]])
+  );
+
+  return {
+    description,
+    ingredients,
+    allergens,
+    nutrition,
+    labels,
+    category_path: categoryPath(product),
+    kassalapp_raw: raw
+  };
 }
 
-function kassalappPriceDateFromAny(value: any) {
+function priceDateFromAny(value: any) {
   return value?.date ?? value?.valid_from ?? value?.updated_at ?? value?.created_at ?? null;
+}
+
+function storeCode(store: any) {
+  return String(store?.code ?? store?.store ?? store?.name ?? "UNKNOWN");
+}
+
+function storeName(store: any) {
+  return String(store?.name ?? store?.store ?? store?.code ?? "Ukjent butikk");
 }
 
 function kassalappStoreProductsFromEanPayload(payload: any, fallbackEan: string): KassalappProduct[] {
@@ -311,68 +373,73 @@ function kassalappStoreProductsFromEanPayload(payload: any, fallbackEan: string)
   const result: KassalappProduct[] = [];
 
   for (const product of products) {
-    const stores = kassalappArray(product?.store);
-    const prices = kassalappArray(product?.current_price);
+    const stores = asArray(product?.store ?? product?.stores);
+    const prices = asArray(product?.current_price ?? product?.prices);
 
     if (stores.length && prices.length) {
       for (let index = 0; index < stores.length; index += 1) {
         const store = stores[index];
         const priceObject = prices[index] ?? prices[0];
-
-        const price = kassalappNumberOrNull(
-          typeof priceObject === "object" ? priceObject?.price : priceObject
-        );
-
+        const price = toNumberOrNull(typeof priceObject === "object" ? priceObject?.price ?? priceObject?.current_price : priceObject);
         if (price == null) continue;
 
-        const unitPrice = kassalappNumberOrNull(
+        const unitPrice = toNumberOrNull(
           typeof priceObject === "object"
-            ? priceObject?.unit_price ?? priceObject?.unitPrice
+            ? priceObject?.unit_price ?? priceObject?.current_unit_price ?? priceObject?.unitPrice
             : product?.current_unit_price
         );
-
-        const date = typeof priceObject === "object" ? kassalappPriceDateFromAny(priceObject) : null;
+        const date = typeof priceObject === "object" ? priceDateFromAny(priceObject) : null;
 
         result.push({
           ...product,
+          raw: product,
           id: Number(product?.id ?? product?.kassalapp_id ?? 0),
           name: String(product?.name ?? product?.product_name ?? "Ukjent produkt"),
           brand: product?.brand ?? product?.vendor ?? null,
           vendor: product?.vendor ?? null,
           ean: String(product?.ean ?? root?.ean ?? fallbackEan),
           url: product?.url ?? product?.kassalapp?.url ?? null,
-          image: product?.image ?? product?.image_url ?? product?.kassalapp?.image ?? null,
+          image: product?.image ?? product?.image_url ?? product?.kassalapp?.image ?? product?.kassalapp?.opengraph ?? null,
           category: product?.category ?? null,
           current_price: price,
           current_unit_price: unitPrice,
           weight: product?.weight ?? null,
           weight_unit: product?.weight_unit ?? null,
-          store: store ?? null,
-          price_history: date ? [{ price, date }] : product?.price_history ?? []
+          store: {
+            ...store,
+            code: storeCode(store),
+            name: storeName(store)
+          },
+          price_history: date ? [{ price, date, store: storeCode(store) }] : product?.price_history ?? []
         });
       }
 
       continue;
     }
 
-    const price = kassalappNumberOrNull(product?.current_price);
-    if (price == null) continue;
-
+    const price = toNumberOrNull(product?.current_price);
     result.push({
       ...product,
+      raw: product,
       id: Number(product?.id ?? product?.kassalapp_id ?? 0),
       name: String(product?.name ?? product?.product_name ?? "Ukjent produkt"),
       brand: product?.brand ?? product?.vendor ?? null,
       vendor: product?.vendor ?? null,
       ean: String(product?.ean ?? root?.ean ?? fallbackEan),
       url: product?.url ?? product?.kassalapp?.url ?? null,
-      image: product?.image ?? product?.image_url ?? product?.kassalapp?.image ?? null,
+      image: product?.image ?? product?.image_url ?? product?.kassalapp?.image ?? product?.kassalapp?.opengraph ?? null,
       category: product?.category ?? null,
       current_price: price,
-      current_unit_price: kassalappNumberOrNull(product?.current_unit_price),
+      current_unit_price: toNumberOrNull(product?.current_unit_price),
       weight: product?.weight ?? null,
       weight_unit: product?.weight_unit ?? null,
-      store: product?.store ?? null,
+      store: product?.store
+        ? {
+            ...(Array.isArray(product.store) ? product.store[0] : product.store),
+            code: storeCode(Array.isArray(product.store) ? product.store[0] : product.store),
+            name: storeName(Array.isArray(product.store) ? product.store[0] : product.store)
+          }
+        : null,
       price_history: product?.price_history ?? []
     });
   }
@@ -381,41 +448,11 @@ function kassalappStoreProductsFromEanPayload(payload: any, fallbackEan: string)
 }
 
 export async function findKassalappProductsByEan(ean: string) {
-  const apiKey = process.env.KASSALAPP_API_KEY;
+  const clean = cleanEan(ean);
+  if (!clean) return [] as KassalappProduct[];
 
-  if (!apiKey) {
-    throw new Error("KASSALAPP_API_KEY mangler i miljøvariabler");
-  }
+  const payload = await kassalappFetch<any>(`/products/ean/${encodeURIComponent(clean)}`);
+  if (!payload) return [] as KassalappProduct[];
 
-  const cleanEan = String(ean ?? "").replace(/\D/g, "").trim();
-
-  if (!cleanEan) {
-    return [] as KassalappProduct[];
-  }
-
-  const response = await fetch(
-    `${BASE_URL}/products/ean/${encodeURIComponent(cleanEan)}`,
-    {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        Accept: "application/json"
-      },
-      next: { revalidate: 60 * 15 }
-    }
-  );
-
-  if (response.status === 404) {
-    return [] as KassalappProduct[];
-  }
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(
-      `Kassalapp EAN-oppslag svarte ${response.status}: ${body.slice(0, 200)}`
-    );
-  }
-
-  const payload = await response.json();
-  return kassalappStoreProductsFromEanPayload(payload, cleanEan);
+  return kassalappStoreProductsFromEanPayload(payload, clean);
 }
-

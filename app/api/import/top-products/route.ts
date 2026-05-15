@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdminAccess } from "@/lib/admin-guard";
 import { TOP_50_PRODUCTS, type TopProductSeed } from "@/lib/top-products";
-import { normalizeCategory, packageSize, searchKassalappProducts, type KassalappProduct } from "@/lib/kassalapp";
+import { normalizeCategory, packageSize, productMetadataPayload, searchKassalappProducts, type KassalappProduct } from "@/lib/kassalapp";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
 
 type ImportBody = {
@@ -60,7 +60,8 @@ function productPayload(seed: TopProductSeed, product: KassalappProduct, househo
     is_basis: seed.isBasis ?? false,
     is_freezable: seed.isFreezable ?? false,
     preferred_store: seed.preferredStore ?? product.store?.name ?? null,
-    notes: [seed.notes, product.url].filter(Boolean).join("\n") || null
+    notes: [seed.notes, product.url].filter(Boolean).join("\n") || null,
+    ...productMetadataPayload(product)
   };
 }
 

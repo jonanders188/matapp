@@ -22,6 +22,12 @@ type Product = {
   is_freezable: boolean | null;
   preferred_store: string | null;
   notes: string | null;
+  description?: string | null;
+  ingredients?: string | null;
+  allergens?: unknown | null;
+  nutrition?: unknown | null;
+  labels?: unknown | null;
+  category_path?: string[] | null;
 };
 
 type InventoryItem = {
@@ -57,6 +63,24 @@ function shortDate(value?: string | null) {
 
 function toFormValue(value: string | number | boolean | null | undefined) {
   if (value === null || value === undefined) return "";
+  return String(value);
+}
+
+function shortJson(value: unknown) {
+  if (!value) return null;
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => (typeof item === "string" ? item : item?.name ?? item?.label ?? item?.value ?? JSON.stringify(item)))
+      .filter(Boolean)
+      .join(", ");
+  }
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .slice(0, 12)
+      .map(([key, item]) => `${key}: ${typeof item === "object" ? JSON.stringify(item) : String(item)}`)
+      .join(" · ");
+  }
   return String(value);
 }
 
@@ -213,6 +237,33 @@ export default function ProductRulesPage() {
               </div>
 
               <label className="mt-5 block space-y-1 text-sm"><span className="font-medium">Notater / regel</span><textarea className="min-h-28 w-full rounded-xl border border-line px-3 py-2" value={String(form.notes ?? "")} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Eksempel: Kjøp OMO under 50 kr når lager <= 1." /></label>
+              <section className="mt-5 rounded-2xl border border-line bg-slate-50 p-4">
+                <h3 className="font-semibold">Produktdata fra Kassalapp</h3>
+                <div className="mt-3 space-y-3 text-sm">
+                  {data.product.category_path?.length ? (
+                    <div><p className="text-xs uppercase tracking-wide text-muted">Kategori</p><p>{data.product.category_path.join(" › ")}</p></div>
+                  ) : null}
+                  {data.product.description ? (
+                    <div><p className="text-xs uppercase tracking-wide text-muted">Beskrivelse</p><p>{data.product.description}</p></div>
+                  ) : null}
+                  {data.product.ingredients ? (
+                    <div><p className="text-xs uppercase tracking-wide text-muted">Ingredienser</p><p>{data.product.ingredients}</p></div>
+                  ) : null}
+                  {shortJson(data.product.allergens) ? (
+                    <div><p className="text-xs uppercase tracking-wide text-muted">Allergener</p><p>{shortJson(data.product.allergens)}</p></div>
+                  ) : null}
+                  {shortJson(data.product.nutrition) ? (
+                    <div><p className="text-xs uppercase tracking-wide text-muted">Næring</p><p>{shortJson(data.product.nutrition)}</p></div>
+                  ) : null}
+                  {shortJson(data.product.labels) ? (
+                    <div><p className="text-xs uppercase tracking-wide text-muted">Merking</p><p>{shortJson(data.product.labels)}</p></div>
+                  ) : null}
+                  {!data.product.description && !data.product.ingredients && !data.product.allergens && !data.product.nutrition && !data.product.labels && !data.product.category_path?.length ? (
+                    <p className="text-muted">Ingen ekstra produktdata lagret ennå. Trykk Synk pris for produkt.</p>
+                  ) : null}
+                </div>
+              </section>
+
             </section>
 
             <aside className="space-y-5">

@@ -4,6 +4,7 @@ import {
   findKassalappProductsByEan,
   normalizeCategory,
   packageSize,
+  productMetadataPayload,
   type KassalappProduct
 } from "@/lib/kassalapp";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
@@ -44,7 +45,8 @@ function productPayload(product: KassalappProduct, householdId: string, ean: str
     preferred_store: product.store?.name ?? null,
     desired_stock: 1,
     is_basis: true,
-    notes: product.url ?? null
+    notes: product.url ?? null,
+    ...productMetadataPayload(product)
   };
 }
 
