@@ -32,6 +32,19 @@ type StorePreference = {
   updated_at: string | null;
 };
 
+type PriceSourcePreferences = {
+  include_kassalapp: boolean | null;
+  include_own_shelf_edge: boolean | null;
+  include_other_shelf_edge: boolean | null;
+  include_own_receipt: boolean | null;
+  include_other_receipt: boolean | null;
+  include_own_manual: boolean | null;
+  include_other_manual: boolean | null;
+  updated_at?: string | null;
+};
+
+type PriceSourcePreferenceKey = keyof Omit<PriceSourcePreferences, "updated_at">;
+
 type AdminPayload = {
   household: Household;
   members: Member[];
@@ -43,6 +56,44 @@ const roles: Array<{ value: MemberRole; label: string; description: string }> = 
   { value: "admin", label: "Admin", description: "Kan administrere husholdning og medlemmer" },
   { value: "member", label: "Medlem", description: "Kan bruke appen normalt" },
   { value: "child", label: "Barn", description: "Begrenset rolle for senere funksjoner" }
+];
+
+const priceSourceOptions: Array<{ key: PriceSourcePreferenceKey; label: string; description: string }> = [
+  {
+    key: "include_kassalapp",
+    label: "Kassalapp API",
+    description: "Offentlige prisdata hentet fra Kassalapp. Anbefales på."
+  },
+  {
+    key: "include_own_shelf_edge",
+    label: "Egne hyllekant-/skannepriser",
+    description: "Priser dere selv har registrert via hyllekant eller mobilscan."
+  },
+  {
+    key: "include_other_shelf_edge",
+    label: "Hyllekant-/skannepriser fra andre",
+    description: "Delte prisobservasjoner fra andre husholdninger."
+  },
+  {
+    key: "include_own_receipt",
+    label: "Egne kvitteringspriser",
+    description: "Priser hentet fra deres egne kvitteringer."
+  },
+  {
+    key: "include_other_receipt",
+    label: "Kvitteringspriser fra andre",
+    description: "Anonymiserte prisobservasjoner fra andres kvitteringer."
+  },
+  {
+    key: "include_own_manual",
+    label: "Egne manuelle priser",
+    description: "Priser lagt inn manuelt av denne husholdningen."
+  },
+  {
+    key: "include_other_manual",
+    label: "Manuelle priser fra andre",
+    description: "Delte manuelle prisobservasjoner fra andre husholdninger."
+  }
 ];
 
 function roleLabel(role: MemberRole) {
@@ -64,6 +115,8 @@ export default function AdminPage() {
   const [newRole, setNewRole] = useState<MemberRole>("member");
   const [stores, setStores] = useState<StorePreference[]>([]);
   const [storesLoading, setStoresLoading] = useState(false);
+  const [priceSourcePreferences, setPriceSourcePreferences] = useState<PriceSourcePreferences | null>(null);
+  const [priceSourcePreferencesLoading, setPriceSourcePreferencesLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -88,6 +141,25 @@ export default function AdminPage() {
     }
   }
 
+  async function loadPriceSourcePreferences() {
+    setPriceSourcePreferencesLoading(true);
+
+    try {
+      const response = await authFetch("/api/admin/price-source-preferences", { cache: "no-store" });
+      const result = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(result?.error ?? "Kunne ikke hente priskildevalg");
+      }
+
+      setPriceSourcePreferences(result?.data ?? null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Kunne ikke hente priskildevalg");
+    } finally {
+      setPriceSourcePreferencesLoading(false);
+    }
+  }
+
   async function loadAdmin() {
     setLoading(true);
     setError(null);
@@ -104,7 +176,7 @@ export default function AdminPage() {
       setPayload(data);
       setHouseholdName(data.household.name ?? "");
       setMonthlyBudget(String(data.household.monthly_budget ?? 0));
-      await loadStores();
+      await Promise.all([loadStores(), loadPriceSourcePreferences()]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kunne ikke hente admin-data");
     } finally {
@@ -252,6 +324,37 @@ export default function AdminPage() {
     }
   }
 
+  async function updatePriceSourcePreference(key: PriceSourcePreferenceKey, value: boolean) {
+    if (!priceSourcePreferences) return;
+
+    const nextPreferences = { ...priceSourcePreferences, [key]: value };
+    setPriceSourcePreferences(nextPreferences);
+    setSaving(`price-source-${key}`);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const response = await authFetch("/api/admin/price-source-preferences", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [key]: value })
+      });
+      const result = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(result?.error ?? "Kunne ikke lagre priskildevalg");
+      }
+
+      setPriceSourcePreferences(result?.data ?? nextPreferences);
+      setMessage("Priskildevalgene er oppdatert.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Kunne ikke lagre priskildevalg");
+      await loadPriceSourcePreferences();
+    } finally {
+      setSaving(null);
+    }
+  }
+
   useEffect(() => {
     loadAdmin().catch(() => undefined);
   }, []);
@@ -376,6 +479,49 @@ export default function AdminPage() {
                     </p>
                   ) : null}
                 </div>
+              </section>
+
+              <section className="card p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-semibold">Priskilder i sammenligning</h2>
+                    <p className="mt-1 text-sm text-muted">
+                      Velg hvilke prisobservasjoner som skal brukes i dashboard og prissammenligning.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={loadPriceSourcePreferences}
+                    disabled={priceSourcePreferencesLoading}
+                    className="rounded-xl border border-line px-3 py-2 text-xs font-semibold text-brand disabled:opacity-60"
+                  >
+                    {priceSourcePreferencesLoading ? "Laster" : "Oppdater"}
+                  </button>
+                </div>
+
+                {priceSourcePreferences ? (
+                  <div className="mt-5 space-y-3">
+                    {priceSourceOptions.map((option) => (
+                      <label key={option.key} className="flex items-start justify-between gap-4 rounded-2xl border border-line p-4">
+                        <span>
+                          <span className="block text-sm font-semibold text-slate-800">{option.label}</span>
+                          <span className="mt-1 block text-xs leading-5 text-muted">{option.description}</span>
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={priceSourcePreferences[option.key] !== false}
+                          disabled={saving === `price-source-${option.key}`}
+                          onChange={(event) => updatePriceSourcePreference(option.key, event.target.checked)}
+                          className="mt-1"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-5 rounded-xl bg-slate-50 p-4 text-sm text-muted">
+                    Ingen priskildevalg funnet ennå. Trykk Oppdater, eller lagre et valg for å opprette standardoppsettet.
+                  </p>
+                )}
               </section>
 
               <section className="card p-5">
