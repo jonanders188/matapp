@@ -9,6 +9,7 @@ import {
 } from "@/lib/kassalapp";
 import { canonicalStoreIdentity, normalizeStoreCode as normalizeKnownStoreCode } from "@/lib/price-observations";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
+import { findCanonicalProductByEan, insertProductWithoutDuplicate, PRODUCT_IDENTITY_SELECT } from "@/lib/product-identity";
 
 type ShelfPriceRequest = {
   ean?: string;
@@ -150,18 +151,10 @@ async function getSavedStore(householdId: string, storeKey: string) {
 async function findOrCreateProduct(householdId: string, ean: string) {
   const supabase = getSupabaseAdmin();
 
-  const existing = await supabase
-    .from("products")
-    .select("id, name, brand, ean, category, package_size, image_url, desired_stock, target_price, target_price_unit, preferred_store, is_basis, is_freezable, notes")
-    .eq("ean", ean)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const existingProduct = await findCanonicalProductByEan<ShelfProductRow>(supabase, ean, PRODUCT_IDENTITY_SELECT);
 
-  if (existing.error) throw existing.error;
-
-  if (existing.data) {
-    let product = existing.data as ShelfProductRow;
+  if (existingProduct) {
+    let product = existingProduct;
 
     if (!product.is_basis) {
       const updated = await supabase
@@ -186,16 +179,14 @@ async function findOrCreateProduct(householdId: string, ean: string) {
     return { product: null, created: false };
   }
 
-  const inserted = await supabase
-    .from("products")
-    .insert(productPayload(selected, householdId, ean))
-    .select("id, name, brand, ean, category, package_size, image_url, desired_stock, target_price, target_price_unit, preferred_store, is_basis, is_freezable, notes")
-    .single();
+  const saved = await insertProductWithoutDuplicate<ShelfProductRow>(
+    supabase,
+    productPayload(selected, householdId, ean),
+    PRODUCT_IDENTITY_SELECT
+  );
 
-  if (inserted.error) throw inserted.error;
-
-  const householdProduct = await ensureHouseholdProduct(householdId, inserted.data.id, inserted.data);
-  return { product: mergeHouseholdProduct(inserted.data, householdProduct), created: true };
+  const householdProduct = await ensureHouseholdProduct(householdId, saved.data.id, saved.data);
+  return { product: mergeHouseholdProduct(saved.data, householdProduct), created: !saved.reusedExisting };
 }
 
 export async function POST(request: Request) {

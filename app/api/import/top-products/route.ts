@@ -4,6 +4,7 @@ import { TOP_50_PRODUCTS, type TopProductSeed } from "@/lib/top-products";
 import { normalizeCategory, packageSize, productMetadataPayload, searchKassalappProducts, type KassalappProduct } from "@/lib/kassalapp";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
 import { canonicalStoreName, normalizeStoreCode } from "@/lib/price-observations";
+import { normalizeProductEan } from "@/lib/product-identity";
 
 type ImportBody = {
   dryRun?: boolean;
@@ -49,7 +50,7 @@ function productPayload(seed: TopProductSeed, product: KassalappProduct, househo
   return {
     household_id: householdId,
     kassalapp_id: product.id,
-    ean: product.ean ?? seed.ean ?? null,
+    ean: normalizeProductEan(product.ean ?? seed.ean),
     name: product.name,
     brand: product.brand ?? null,
     category: normalizeCategory(product) ?? seed.category,
@@ -91,15 +92,16 @@ async function ensureHousehold() {
   return created.data[0];
 }
 
-async function findExistingProduct(householdId: string, seed: TopProductSeed, product: KassalappProduct) {
+async function findExistingProduct(_householdId: string, seed: TopProductSeed, product: KassalappProduct) {
   const supabase = getSupabaseAdmin();
 
-  if (product.ean || seed.ean) {
+  const normalizedEan = normalizeProductEan(product.ean ?? seed.ean);
+
+  if (normalizedEan) {
     const byEan = await supabase
       .from("products")
       .select("id")
-      .eq("household_id", householdId)
-      .eq("ean", product.ean ?? seed.ean)
+      .eq("ean", normalizedEan)
       .order("created_at", { ascending: true })
       .limit(1);
     if (byEan.error) throw byEan.error;
@@ -109,7 +111,6 @@ async function findExistingProduct(householdId: string, seed: TopProductSeed, pr
   const byKassalappId = await supabase
     .from("products")
     .select("id")
-    .eq("household_id", householdId)
     .eq("kassalapp_id", product.id)
     .order("created_at", { ascending: true })
     .limit(1);
@@ -196,9 +197,18 @@ async function importOne(seed: TopProductSeed, householdId: string, dryRun: bool
   const existing = await findExistingProduct(householdId, seed, chosen);
   const payload = productPayload(seed, chosen, householdId);
 
-  const saved = existing
+  let saved = existing
     ? await supabase.from("products").update(payload).eq("id", existing.id).select("id, name").limit(1)
     : await supabase.from("products").insert(payload).select("id, name").limit(1);
+
+  if (saved.error && (saved.error as { code?: string }).code === "23505" && payload.ean) {
+    saved = await supabase
+      .from("products")
+      .select("id, name")
+      .eq("ean", payload.ean)
+      .order("created_at", { ascending: true })
+      .limit(1);
+  }
 
   if (saved.error) throw saved.error;
   const savedProduct = saved.data?.[0];

@@ -3,6 +3,7 @@ import { findKassalappProductsByEan, latestPriceDate, lookupKassalappProductsWit
 import { apiErrorResponse, requireCurrentHousehold } from "@/lib/current-household";
 import { canonicalStoreIdentity, insertPriceObservations } from "@/lib/price-observations";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
+import { findCanonicalProductByEan, insertProductWithoutDuplicate, PRODUCT_IDENTITY_SELECT } from "@/lib/product-identity";
 
 type ScanMode = "in" | "out";
 
@@ -408,18 +409,10 @@ async function refreshProductPrices(productId: string, ean: string) {
 async function findOrCreateProduct(ean: string, householdId: string, options?: { skipKassalappPriceInsert?: boolean }) {
   const supabase = getSupabaseAdmin();
 
-  const existing = await supabase
-    .from("products")
-    .select("id, name, brand, ean, category, package_size, image_url, desired_stock, target_price, target_price_unit, preferred_store, is_basis, is_freezable, notes")
-    .eq("ean", ean)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const existingProduct = await findCanonicalProductByEan<MobileProductRow>(supabase, ean, PRODUCT_IDENTITY_SELECT);
 
-  if (existing.error) throw existing.error;
-
-  if (existing.data) {
-    let product = existing.data as MobileProductRow;
+  if (existingProduct) {
+    let product = existingProduct;
 
     if (!product.is_basis) {
       const basisUpdate = await supabase
@@ -439,7 +432,7 @@ async function findOrCreateProduct(ean: string, householdId: string, options?: {
     return {
       product: mergeHouseholdProduct(product, householdProduct.data),
       created: false,
-      madeBasis: !existing.data.is_basis || householdProduct.madeBasis,
+      madeBasis: !existingProduct.is_basis || householdProduct.madeBasis,
       priceObservationsInserted: priceResult.inserted
     };
   }
@@ -455,22 +448,16 @@ async function findOrCreateProduct(ean: string, householdId: string, options?: {
     ean: normalizeEan(selected.ean) || ean
   };
 
-  const inserted = await supabase
-    .from("products")
-    .insert(payload)
-    .select("id, name, brand, ean, category, package_size, image_url, desired_stock, target_price, target_price_unit, preferred_store, is_basis, is_freezable, notes")
-    .single();
+  const saved = await insertProductWithoutDuplicate<MobileProductRow>(supabase, payload, PRODUCT_IDENTITY_SELECT);
 
-  if (inserted.error) throw inserted.error;
-
-  const householdProduct = await ensureHouseholdProduct(householdId, inserted.data.id, inserted.data);
+  const householdProduct = await ensureHouseholdProduct(householdId, saved.data.id, saved.data);
   const priceResult = options?.skipKassalappPriceInsert
     ? { inserted: 0 }
-    : await insertPriceObservations(inserted.data.id, selected, related, "kassalapp-mobile-scan");
+    : await insertPriceObservations(saved.data.id, selected, related, "kassalapp-mobile-scan");
 
   return {
-    product: mergeHouseholdProduct(inserted.data, householdProduct.data),
-    created: true,
+    product: mergeHouseholdProduct(saved.data, householdProduct.data),
+    created: !saved.reusedExisting,
     madeBasis: true,
     priceObservationsInserted: priceResult.inserted
   };

@@ -3,45 +3,13 @@ import { normalizeCategory, packageSize, productMetadataPayload, type KassalappP
 import { insertPriceObservations } from "@/lib/price-observations";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
 import { apiErrorResponse, requireCurrentHousehold } from "@/lib/current-household";
+import { normalizeProductEan } from "@/lib/product-identity";
 
 type ApiErrorLike = {
   message?: string;
   code?: string;
   details?: string;
   hint?: string;
-};
-
-type ProductRow = {
-  id: string;
-  household_id: string | null;
-  name: string;
-  brand: string | null;
-  ean: string | null;
-  category: string | null;
-  package_size: string | null;
-  image_url: string | null;
-  target_price: number | null;
-  preferred_store: string | null;
-  desired_stock: number | null;
-  is_basis: boolean | null;
-  created_at: string | null;
-  target_price_unit?: string | null;
-  is_freezable?: boolean | null;
-  notes?: string | null;
-};
-
-type HouseholdProductRow = {
-  id?: string;
-  product_id: string;
-  is_basis: boolean | null;
-  desired_stock: number | null;
-  target_price: number | null;
-  target_price_unit: string | null;
-  preferred_store: string | null;
-  is_freezable: boolean | null;
-  notes: string | null;
-  created_at: string | null;
-  updated_at: string | null;
 };
 
 function errorMessage(error: unknown, fallback: string) {
@@ -70,7 +38,7 @@ function productPayload(product: KassalappProduct, householdId: string) {
   return {
     household_id: householdId,
     kassalapp_id: product.id,
-    ean: product.ean ?? null,
+    ean: normalizeProductEan(product.ean),
     name: product.name,
     brand: product.brand ?? null,
     category: normalizeCategory(product),
@@ -85,6 +53,37 @@ function productPayload(product: KassalappProduct, householdId: string) {
     ...productMetadataPayload(product)
   };
 }
+
+type HouseholdProductRow = {
+  product_id: string;
+  is_basis: boolean | null;
+  desired_stock: number | null;
+  target_price: number | null;
+  target_price_unit: string | null;
+  preferred_store: string | null;
+  is_freezable: boolean | null;
+  notes: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+type ProductRow = {
+  id: string;
+  name: string;
+  brand: string | null;
+  ean: string | null;
+  category: string | null;
+  package_size: string | null;
+  image_url: string | null;
+  target_price: number | null;
+  preferred_store: string | null;
+  desired_stock: number | null;
+  is_basis: boolean | null;
+  created_at: string | null;
+  target_price_unit?: string | null;
+  is_freezable?: boolean | null;
+  notes?: string | null;
+};
 
 function householdProductPayload(householdId: string, productId: string, product: KassalappProduct) {
   return {
@@ -188,79 +187,10 @@ async function ensureInventoryItem(householdId: string, productId: string, produ
   return null;
 }
 
-async function attachPriceStats(products: ProductRow[]) {
-  const supabase = getSupabaseAdmin();
-  const productIds = products.map((product) => product.id);
-
-  if (!productIds.length) return products.map((product) => ({
-    ...product,
-    price_observation_count: 0,
-    latest_price: null,
-    latest_unit_price: null,
-    latest_store: null,
-    latest_observed_at: null
-  }));
-
-  const observations = await supabase
-    .from("price_observations")
-    .select("product_id, store_name, price, unit_price, observed_at")
-    .in("product_id", productIds)
-    .order("observed_at", { ascending: false });
-
-  if (observations.error) {
-    logApiError("price_observations select feilet", observations.error);
-  }
-
-  const stats = new Map<
-    string,
-    {
-      price_observation_count: number;
-      latest_price: number | null;
-      latest_unit_price: number | null;
-      latest_store: string | null;
-      latest_observed_at: string | null;
-    }
-  >();
-
-  for (const observation of observations.data ?? []) {
-    const current = stats.get(observation.product_id) ?? {
-      price_observation_count: 0,
-      latest_price: null,
-      latest_unit_price: null,
-      latest_store: null,
-      latest_observed_at: null
-    };
-
-    current.price_observation_count += 1;
-
-    if (!current.latest_observed_at) {
-      current.latest_price = observation.price;
-      current.latest_unit_price = observation.unit_price;
-      current.latest_store = observation.store_name;
-      current.latest_observed_at = observation.observed_at;
-    }
-
-    stats.set(observation.product_id, current);
-  }
-
-  return products.map((product) => ({
-    ...product,
-    ...(stats.get(product.id) ?? {
-      price_observation_count: 0,
-      latest_price: null,
-      latest_unit_price: null,
-      latest_store: null,
-      latest_observed_at: null
-    })
-  }));
-}
-
 export async function GET(request: Request) {
   try {
     const supabase = getSupabaseAdmin();
     const { householdId } = await requireCurrentHousehold(request);
-    const url = new URL(request.url);
-    const basisOnly = url.searchParams.get("basis") === "true";
 
     const householdProductsResult = await supabase
       .from("household_products")
@@ -271,22 +201,21 @@ export async function GET(request: Request) {
     if (householdProductsResult.error) throw householdProductsResult.error;
 
     const householdProducts = (householdProductsResult.data ?? []) as HouseholdProductRow[];
-    const filteredHouseholdProducts = basisOnly ? householdProducts.filter((row) => row.is_basis === true) : householdProducts;
     const householdByProductId = new Map(householdProducts.map((row) => [row.product_id, row]));
-    const productIds = filteredHouseholdProducts.map((row) => row.product_id).filter(Boolean);
+    const householdProductIds = householdProducts.map((row) => row.product_id).filter(Boolean);
 
     let products: ProductRow[] = [];
 
-    if (productIds.length) {
+    if (householdProductIds.length) {
       const productsResult = await supabase
         .from("products")
-        .select("id, household_id, name, brand, ean, category, package_size, image_url, target_price, target_price_unit, preferred_store, desired_stock, is_basis, is_freezable, notes, created_at")
-        .in("id", productIds);
+        .select("id, name, brand, ean, category, package_size, image_url, target_price, target_price_unit, preferred_store, desired_stock, is_basis, is_freezable, notes, created_at")
+        .in("id", householdProductIds);
 
       if (productsResult.error) throw productsResult.error;
 
       const productsById = new Map((productsResult.data ?? []).map((product) => [product.id, product as ProductRow]));
-      products = productIds
+      products = householdProductIds
         .map((productId) => {
           const product = productsById.get(productId);
           if (!product) return null;
@@ -295,20 +224,104 @@ export async function GET(request: Request) {
         .filter(Boolean) as ProductRow[];
     }
 
-    // Fallback while old rows are still being migrated into household_products.
+    // Fallback while the app still has older products that have not been copied
+    // into household_products. This can be removed after the migration is fully stable.
     if (!products.length) {
-      const fallbackQuery = supabase
+      const fallback = await supabase
         .from("products")
-        .select("id, household_id, name, brand, ean, category, package_size, image_url, target_price, target_price_unit, preferred_store, desired_stock, is_basis, is_freezable, notes, created_at")
+        .select("id, name, brand, ean, category, package_size, image_url, target_price, target_price_unit, preferred_store, desired_stock, is_basis, is_freezable, notes, created_at")
         .eq("household_id", householdId)
         .order("created_at", { ascending: false });
 
-      const fallback = basisOnly ? await fallbackQuery.eq("is_basis", true) : await fallbackQuery;
       if (fallback.error) throw fallback.error;
       products = (fallback.data ?? []) as ProductRow[];
     }
 
-    return NextResponse.json({ data: await attachPriceStats(products) });
+    const productIds = products.map((product) => product.id);
+
+    if (!productIds.length) {
+      return NextResponse.json({ data: [] });
+    }
+
+    type PriceObservationSummaryRow = {
+      product_id: string;
+      store_name: string | null;
+      price: number | null;
+      unit_price: number | null;
+      observed_at: string | null;
+    };
+
+    const observationsData: PriceObservationSummaryRow[] = [];
+    const pageSize = 1000;
+
+    // Supabase/PostgREST caps result sets. Basisutvalg can easily have more
+    // than 1000 price rows across all products, so a single query may miss
+    // products and make them look like they have 0 observations. Read pages
+    // until exhausted so /products uses the same product_id price history as
+    // the product detail page.
+    for (let from = 0; ; from += pageSize) {
+      const page = await supabase
+        .from("price_observations")
+        .select("product_id, store_name, price, unit_price, observed_at")
+        .in("product_id", productIds)
+        .order("observed_at", { ascending: false })
+        .range(from, from + pageSize - 1);
+
+      if (page.error) {
+        logApiError("price_observations select feilet", page.error);
+        break;
+      }
+
+      const rows = (page.data ?? []) as PriceObservationSummaryRow[];
+      observationsData.push(...rows);
+
+      if (rows.length < pageSize) break;
+    }
+
+    const stats = new Map<
+      string,
+      {
+        price_observation_count: number;
+        latest_price: number | null;
+        latest_unit_price: number | null;
+        latest_store: string | null;
+        latest_observed_at: string | null;
+      }
+    >();
+
+    for (const observation of observationsData) {
+      const current = stats.get(observation.product_id) ?? {
+        price_observation_count: 0,
+        latest_price: null,
+        latest_unit_price: null,
+        latest_store: null,
+        latest_observed_at: null
+      };
+
+      current.price_observation_count += 1;
+
+      if (!current.latest_observed_at) {
+        current.latest_price = observation.price;
+        current.latest_unit_price = observation.unit_price;
+        current.latest_store = observation.store_name;
+        current.latest_observed_at = observation.observed_at;
+      }
+
+      stats.set(observation.product_id, current);
+    }
+
+    return NextResponse.json({
+      data: products.map((product) => ({
+        ...product,
+        ...(stats.get(product.id) ?? {
+          price_observation_count: 0,
+          latest_price: null,
+          latest_unit_price: null,
+          latest_store: null,
+          latest_observed_at: null
+        })
+      }))
+    });
   } catch (error) {
     logApiError("GET feilet", error);
     return apiErrorResponse(error);
@@ -328,20 +341,23 @@ export async function POST(request: Request) {
     const supabase = getSupabaseAdmin();
     const { householdId } = await requireCurrentHousehold(request);
     const payload = productPayload(product, householdId);
+    const normalizedEan = normalizeProductEan(product.ean);
 
     let existingRows: Array<{ id: string; household_id: string | null; created_at: string | null }> = [];
 
-    if (product.ean) {
+    if (normalizedEan) {
       const existing = await supabase
         .from("products")
         .select("id, household_id, created_at")
-        .eq("ean", product.ean)
+        .eq("ean", normalizedEan)
         .order("created_at", { ascending: true })
         .limit(10);
 
       if (existing.error) throw existing.error;
       existingRows = existing.data ?? [];
-    } else {
+    }
+
+    if (!existingRows.length) {
       const existing = await supabase
         .from("products")
         .select("id, household_id, created_at")
@@ -353,19 +369,33 @@ export async function POST(request: Request) {
       existingRows = existing.data ?? [];
     }
 
-    const existingProduct = existingRows.find((row) => row.household_id === householdId) ?? existingRows[0];
-    const result = existingProduct
-      ? await supabase.from("products").update({ ...payload, household_id: existingProduct.household_id ?? payload.household_id }).eq("id", existingProduct.id).select("*").single()
+    const existingProduct =
+      existingRows.find((row) => row.household_id === householdId) ??
+      existingRows.find((row) => row.household_id === null) ??
+      existingRows[0];
+
+    let result = existingProduct
+      ? await supabase.from("products").update(payload).eq("id", existingProduct.id).select("*").single()
       : await supabase.from("products").insert(payload).select("*").single();
+
+    if (result.error && normalizedEan && (result.error as ApiErrorLike).code === "23505") {
+      const existingAfterConflict = await supabase
+        .from("products")
+        .select("*")
+        .eq("ean", normalizedEan)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .single();
+
+      if (existingAfterConflict.error) throw existingAfterConflict.error;
+      result = existingAfterConflict;
+    }
 
     if (result.error) throw result.error;
 
+    const householdProduct = await ensureHouseholdProduct(householdId, result.data.id, product);
+
     const warnings: string[] = [];
-    await ensureHouseholdProduct(householdId, result.data.id, product);
-
-    const legacy = await supabase.from("products").update({ is_basis: true }).eq("id", result.data.id).eq("household_id", householdId);
-    if (legacy.error) warnings.push(errorMessage(legacy.error, "Kunne ikke oppdatere legacy basisstatus"));
-
     const inventoryWarning = await ensureInventoryItem(householdId, result.data.id, product);
     if (inventoryWarning) warnings.push(inventoryWarning);
 
@@ -373,7 +403,11 @@ export async function POST(request: Request) {
     if (priceResult.error) warnings.push(priceResult.error);
 
     return NextResponse.json({
-      data: result.data,
+      data: {
+        ...result.data,
+        ...mergeHouseholdProduct(result.data, householdProduct)
+      },
+      household_product: householdProduct,
       warnings,
       priceObservationsInserted: priceResult.inserted
     });
