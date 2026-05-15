@@ -95,10 +95,12 @@ type StoreComparison = {
   comparableProductPairs: number;
   averagePairwiseAdvantagePct: number;
   priceIndex: number | null;
+  confidence: "high" | "medium" | "low" | "none";
 };
 
 const PRICE_FRESH_DAYS = 14;
 const PRICE_FALLBACK_DAYS = 30;
+const MIN_PAIRWISE_SHARED_PRODUCTS = 3;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 type PriceFreshness = "fresh" | "fallback";
@@ -459,8 +461,6 @@ export async function GET(request: Request) {
     for (const [key, meta] of allStores.entries()) {
       let total = 0;
       let matchedProducts = 0;
-      let priceIndexSum = 0;
-      let priceIndexSamples = 0;
 
       for (const product of productComparisons) {
         const price = product.freshStorePrices[key];
@@ -468,15 +468,6 @@ export async function GET(request: Request) {
 
         total += price * product.desiredQuantity;
         matchedProducts += 1;
-
-        const freshPrices = Object.values(product.freshStorePrices).filter((value) => Number.isFinite(value));
-        if (freshPrices.length >= 2) {
-          const average = freshPrices.reduce((sum, value) => sum + value, 0) / freshPrices.length;
-          if (average > 0) {
-            priceIndexSum += (price / average) * 100;
-            priceIndexSamples += 1;
-          }
-        }
       }
 
       const productCount = productComparisons.length;
@@ -499,11 +490,12 @@ export async function GET(request: Request) {
         comparableStoreCount: 0,
         comparableProductPairs: 0,
         averagePairwiseAdvantagePct: 0,
-        priceIndex: priceIndexSamples ? priceIndexSum / priceIndexSamples : null
+        priceIndex: null,
+        confidence: "none"
       });
     }
 
-    const pairwiseAdvantagePct = new Map<string, number>();
+    const pairwiseRatios = new Map<string, number[]>();
     const storeKeys = [...storeStats.keys()];
 
     for (let i = 0; i < storeKeys.length; i += 1) {
@@ -523,30 +515,30 @@ export async function GET(request: Request) {
           const bPrice = product.freshStorePrices[bKey];
           if (aPrice === undefined || bPrice === undefined) continue;
 
-          aTotal += aPrice * product.desiredQuantity;
-          bTotal += bPrice * product.desiredQuantity;
+          const quantityWeight = Math.max(1, product.desiredQuantity);
+          aTotal += aPrice * quantityWeight;
+          bTotal += bPrice * quantityWeight;
           sharedProducts += 1;
         }
 
-        if (!sharedProducts) continue;
+        if (sharedProducts < MIN_PAIRWISE_SHARED_PRODUCTS || aTotal <= 0 || bTotal <= 0) continue;
 
         a.comparableStoreCount += 1;
         b.comparableStoreCount += 1;
         a.comparableProductPairs += sharedProducts;
         b.comparableProductPairs += sharedProducts;
 
-        const averageTotal = (aTotal + bTotal) / 2;
-        const signedAdvantageForA = averageTotal > 0 ? ((bTotal - aTotal) / averageTotal) * 100 : 0;
-        pairwiseAdvantagePct.set(aKey, (pairwiseAdvantagePct.get(aKey) ?? 0) + signedAdvantageForA);
-        pairwiseAdvantagePct.set(bKey, (pairwiseAdvantagePct.get(bKey) ?? 0) - signedAdvantageForA);
+        const ratioA = aTotal / bTotal;
+        const ratioB = bTotal / aTotal;
+        pairwiseRatios.set(aKey, [...(pairwiseRatios.get(aKey) ?? []), ratioA]);
+        pairwiseRatios.set(bKey, [...(pairwiseRatios.get(bKey) ?? []), ratioB]);
 
-        const diff = aTotal - bTotal;
-        if (Math.abs(diff) < 0.01) {
+        if (Math.abs(ratioA - 1) < 0.001) {
           a.pairwiseTies += 1;
           b.pairwiseTies += 1;
           a.pairwiseScore += 0.5;
           b.pairwiseScore += 0.5;
-        } else if (diff < 0) {
+        } else if (ratioA < 1) {
           a.pairwiseWins += 1;
           b.pairwiseLosses += 1;
           a.pairwiseScore += 1;
@@ -558,27 +550,42 @@ export async function GET(request: Request) {
       }
     }
 
-    const storeComparisons: StoreComparison[] = [...storeStats.values()].map((store) => ({
-      ...store,
-      averagePairwiseAdvantagePct: store.comparableStoreCount
-        ? (pairwiseAdvantagePct.get(store.storeKey) ?? 0) / store.comparableStoreCount
-        : 0
-    })).sort((a, b) => {
-      const scoreDiff = b.pairwiseScore - a.pairwiseScore;
-      if (scoreDiff !== 0) return scoreDiff;
+    function geometricPriceIndex(ratios: number[]) {
+      const validRatios = ratios.filter((ratio) => Number.isFinite(ratio) && ratio > 0);
+      if (!validRatios.length) return null;
+      const logAverage = validRatios.reduce((sum, ratio) => sum + Math.log(ratio), 0) / validRatios.length;
+      return Math.exp(logAverage) * 100;
+    }
 
-      const advantageDiff = b.averagePairwiseAdvantagePct - a.averagePairwiseAdvantagePct;
-      if (Math.abs(advantageDiff) >= 0.01) return advantageDiff;
+    function confidenceFor(store: StoreComparison): StoreComparison["confidence"] {
+      if (!store.comparableStoreCount) return "none";
+      if (store.comparableStoreCount >= 3 && store.comparableProductPairs >= 50) return "high";
+      if (store.comparableStoreCount >= 2 && store.comparableProductPairs >= 20) return "medium";
+      return "low";
+    }
+
+    const storeComparisons: StoreComparison[] = [...storeStats.values()].map((store) => {
+      const priceIndex = geometricPriceIndex(pairwiseRatios.get(store.storeKey) ?? []);
+      return {
+        ...store,
+        priceIndex,
+        averagePairwiseAdvantagePct: priceIndex === null ? 0 : 100 - priceIndex,
+        confidence: confidenceFor(store)
+      };
+    }).sort((a, b) => {
+      if (a.priceIndex === null && b.priceIndex !== null) return 1;
+      if (a.priceIndex !== null && b.priceIndex === null) return -1;
 
       const indexA = a.priceIndex ?? Number.POSITIVE_INFINITY;
       const indexB = b.priceIndex ?? Number.POSITIVE_INFINITY;
       const indexDiff = indexA - indexB;
       if (Math.abs(indexDiff) >= 0.01) return indexDiff;
 
-      if (b.matchedProducts !== a.matchedProducts) return b.matchedProducts - a.matchedProducts;
+      const scoreDiff = b.pairwiseScore - a.pairwiseScore;
+      if (scoreDiff !== 0) return scoreDiff;
 
-      const totalDiff = a.total - b.total;
-      if (totalDiff !== 0) return totalDiff;
+      if (b.comparableProductPairs !== a.comparableProductPairs) return b.comparableProductPairs - a.comparableProductPairs;
+      if (b.matchedProducts !== a.matchedProducts) return b.matchedProducts - a.matchedProducts;
 
       const priorityDiff = a.priority - b.priority;
       if (priorityDiff !== 0) return priorityDiff;
@@ -586,15 +593,12 @@ export async function GET(request: Request) {
       return a.store.localeCompare(b.store, "nb");
     });
 
-    const completeStores = storeComparisons.filter((store) => store.matchedProducts === productComparisons.length);
-    const comparableStores = completeStores.length ? completeStores : storeComparisons;
+    const comparableStores = storeComparisons.filter((store) => store.priceIndex !== null);
     const bestStore = comparableStores[0] ?? null;
     const mostExpensiveStore = comparableStores.length
-      ? [...comparableStores].sort((a, b) => b.total - a.total)[0]
+      ? [...comparableStores].sort((a, b) => (b.priceIndex ?? 0) - (a.priceIndex ?? 0))[0]
       : null;
-    const potentialSaving = bestStore && mostExpensiveStore
-      ? Math.max(0, mostExpensiveStore.total - bestStore.total)
-      : 0;
+    const potentialSaving = 0;
 
     return NextResponse.json({
       data: {

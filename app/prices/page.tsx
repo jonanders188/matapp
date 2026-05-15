@@ -42,6 +42,7 @@ type StoreComparison = {
   comparableProductPairs: number;
   averagePairwiseAdvantagePct: number;
   priceIndex: number | null;
+  confidence: "high" | "medium" | "low" | "none";
 };
 
 type BasisPriceData = {
@@ -71,6 +72,13 @@ function priceAgeLabel(ageDays: number | undefined) {
   if (ageDays === 0) return "i dag";
   if (ageDays === 1) return "1 dag";
   return `${ageDays} dager`;
+}
+
+function confidenceLabel(confidence: StoreComparison["confidence"]) {
+  if (confidence === "high") return "Høy tillit";
+  if (confidence === "medium") return "Middels tillit";
+  if (confidence === "low") return "Lav tillit";
+  return "Ikke nok grunnlag";
 }
 
 export default function PricesPage() {
@@ -141,8 +149,8 @@ export default function PricesPage() {
       {error ? <div className="mt-6 rounded-2xl bg-rose-50 p-4 text-rose-700">{error}</div> : null}
 
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 xl:gap-5">
-        <StatCard title="Billigste butikk" value={data.bestStore?.store ?? "-"} subtitle={data.bestStore ? `${kr(data.bestStore.total)} for basisutvalget` : "Ingen priser ennå"} />
-        <StatCard title="Mulig besparelse" value={kr(data.potentialSaving)} subtitle="Mot dyreste sammenlignbare butikk" tone="blue" />
+        <StatCard title="Billigste butikk" value={data.bestStore?.store ?? "-"} subtitle={data.bestStore?.priceIndex ? `${data.bestStore.priceIndex.toFixed(1)} prisindeks` : "Ingen parvis rangering ennå"} />
+        <StatCard title="Sammenlignbare butikker" value={String(data.stores.filter((store) => store.priceIndex !== null).length)} subtitle="Minst 3 felles varer per butikkpar" tone="blue" />
         <StatCard title="Basisvarer sammenlignet" value={`${data.pricedProductCount}/${data.productCount}`} subtitle={comparedSubtitle} tone="amber" />
         <StatCard title="Under målpris" value={String(targetPriceHits)} subtitle="Basisvarer under ønsket pris" tone="purple" />
       </div>
@@ -242,7 +250,8 @@ export default function PricesPage() {
               <div className="mt-4">
                 <p className="text-2xl font-bold text-brand">{data.bestStore.store}</p>
                 <p className="section-subtitle">
-                  {kr(data.bestStore.total)} · {data.bestStore.matchedProducts}/{data.bestStore.productCount} varer · {data.bestStore.coveragePct}% dekning
+                  {data.bestStore.priceIndex ? `${data.bestStore.priceIndex.toFixed(1)} prisindeks · ` : ""}
+                  {data.bestStore.comparableStoreCount} butikkpar · {data.bestStore.comparableProductPairs} felles varetreff · {confidenceLabel(data.bestStore.confidence)}
                 </p>
               </div>
             ) : (
@@ -252,7 +261,7 @@ export default function PricesPage() {
 
           <section className="card p-5">
             <h2 className="font-semibold">Butikkrangering</h2>
-            <p className="section-subtitle">Billigst øverst. Hver butikk sammenlignes parvis mot andre butikker på varer der begge har gyldig 14-dagers pris.</p>
+            <p className="section-subtitle">Billigst øverst. Hver butikk sammenlignes parvis mot andre butikker. Hvert butikkpar bruker alle felles varer med gyldig 14-dagers pris, men bare hvis paret har minst 3 felles produkter.</p>
             <div className="mt-4 space-y-3 text-sm">
               {data.stores.slice(0, 8).map((store, index) => (
                 <div key={store.storeKey} className="rounded-xl bg-slate-50 p-3">
@@ -261,25 +270,27 @@ export default function PricesPage() {
                       <p className="font-semibold">{index + 1}. {store.store}</p>
                       <p className="text-muted">
                         {store.pairwiseWins}-{store.pairwiseLosses}
-                        {store.pairwiseTies ? `-${store.pairwiseTies}` : ""} mot andre butikker · {store.matchedProducts}/{store.productCount} varer
+                        {store.pairwiseTies ? `-${store.pairwiseTies}` : ""} mot andre butikker · {store.comparableStoreCount} butikkpar
                       </p>
                     </div>
                     <div className="text-left sm:text-right">
-                      <p className="font-bold">{store.priceIndex ? `${store.priceIndex.toFixed(1)} indeks` : kr(store.total)}</p>
-                      <p className={store.averagePairwiseAdvantagePct >= 0 ? "text-xs text-brand" : "text-xs text-muted"}>
-                        {store.averagePairwiseAdvantagePct >= 0 ? "" : "+"}
-                        {(-store.averagePairwiseAdvantagePct).toFixed(1)}% mot snittet
-                      </p>
+                      <p className="font-bold">{store.priceIndex ? `${store.priceIndex.toFixed(1)} indeks` : "Ikke nok data"}</p>
+                      {store.priceIndex ? (
+                        <p className={store.averagePairwiseAdvantagePct >= 0 ? "text-xs text-brand" : "text-xs text-muted"}>
+                          {store.averagePairwiseAdvantagePct >= 0 ? "-" : "+"}
+                          {Math.abs(store.averagePairwiseAdvantagePct).toFixed(1)}% mot parvis snitt
+                        </p>
+                      ) : null}
                     </div>
                   </div>
                   <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
                     <div
                       className="h-full rounded-full bg-brand"
-                      style={{ width: `${Math.min(100, Math.max(4, store.coveragePct))}%` }}
+                      style={{ width: `${store.priceIndex ? Math.min(100, Math.max(4, 120 - store.priceIndex)) : 4}%` }}
                     />
                   </div>
                   <p className="mt-2 text-xs text-muted">
-                    {store.coveragePct}% dekning · {store.comparableProductPairs} parvise varesammenligninger
+                    {store.comparableProductPairs} felles varetreff · {store.matchedProducts}/{store.productCount} varer med 14-dagers pris · {confidenceLabel(store.confidence)}
                   </p>
                 </div>
               ))}
@@ -290,7 +301,7 @@ export default function PricesPage() {
           <section className="card p-5">
             <h2 className="font-semibold">Hva sammenlignes?</h2>
             <p className="mt-3 text-sm text-muted">
-              Prissammenligningen bruker bare produkter som ligger i basisutvalget. Butikkrangeringen bruker kun gyldige 14-dagers priser og sammenligner butikkene parvis på varer der begge har pris. Priser mellom 15 og 30 dager vises bare som gammel fallback i produkttabellen, men teller ikke i rangeringen.
+              Prissammenligningen bruker bare produkter som ligger i basisutvalget. Butikkrangeringen bruker en parvis prisindeks: hvert butikkpar sammenlignes bare på produktene der begge har gyldig pris siste 14 dager. Par med færre enn 3 felles produkter hoppes over. Priser mellom 15 og 30 dager vises bare som gammel fallback i produkttabellen, men teller ikke i rangeringen.
             </p>
             <Link href="/products" className="mt-4 inline-flex rounded-xl border border-line px-4 py-2 text-sm font-medium text-brand">
               Administrer basisutvalg
