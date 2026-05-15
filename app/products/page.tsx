@@ -100,29 +100,7 @@ export default function ProductsPage() {
     await loadSaved();
   }
 
-  async function importTopProducts() {
-    setError(null);
-    setMessage(null);
-    setActionLoading("import");
-
-    try {
-      const response = await authFetch("/api/import/top-products", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dryRun: false })
-      });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(payload?.error ?? "Import feilet");
-      setMessage(`Import ferdig: ${payload.created ?? 0} nye, ${payload.updated ?? 0} oppdatert, ${payload.errors ?? 0} feil.`);
-      await loadSaved();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Import feilet");
-    } finally {
-      setActionLoading(null);
-    }
-  }
-
-  async function syncAllPrices() {
+  async function syncBasisPrices() {
     setError(null);
     setMessage(null);
     setActionLoading("sync");
@@ -131,7 +109,7 @@ export default function ProductsPage() {
       const response = await authFetch("/api/products/sync-prices", { method: "POST" });
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(payload?.error ?? "Synk feilet");
-      setMessage(`Prissynk ferdig: ${payload.inserted ?? 0} prisobservasjoner for ${payload.matchedProducts ?? 0} produkter.`);
+      setMessage(`Prissynk ferdig: ${payload.inserted ?? 0} prisobservasjoner for ${payload.matchedProducts ?? 0} basisprodukter.`);
       await loadSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Synk feilet");
@@ -194,18 +172,11 @@ export default function ProductsPage() {
           <a href="/api/health" className="rounded-xl border border-line px-4 py-2 text-sm font-medium text-brand">Sjekk API-status</a>
           <a href="/recommendations" className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700">Anbefalinger</a>
           <button
-            onClick={importTopProducts}
-            disabled={Boolean(actionLoading)}
-            className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60"
-          >
-            {actionLoading === "import" ? "Importerer..." : "Importer topp 50"}
-          </button>
-          <button
-            onClick={syncAllPrices}
+            onClick={syncBasisPrices}
             disabled={Boolean(actionLoading) || !saved.length}
             className="rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
           >
-            {actionLoading === "sync" ? "Synker..." : "Synk alle priser"}
+            {actionLoading === "sync" ? "Synker..." : "Synk basispriser"}
           </button>
         </div>
       </div>
@@ -395,7 +366,7 @@ export default function ProductsPage() {
                   ))}
                   {!saved.length ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-8 text-center text-muted">Ingen produkter lagret ennå. Bruk importknappen eller søk i Kassalapp.</td>
+                      <td colSpan={5} className="px-4 py-8 text-center text-muted">Ingen produkter lagret ennå. Bruk søk i Kassalapp for å legge til produkter.</td>
                     </tr>
                   ) : null}
                 </tbody>
@@ -410,8 +381,7 @@ export default function ProductsPage() {
           <section className="card p-5">
             <h2 className="font-semibold">Neste handlinger</h2>
             <div className="mt-4 space-y-3 text-sm text-muted">
-              <p><b className="text-slate-900">Importer topp 50</b> fyller basisutvalget med faste produkter fra kvitteringene dine.</p>
-              <p><b className="text-slate-900">Synk alle priser</b> henter nye Kassalapp-priser for lagrede produkter.</p>
+              <p><b className="text-slate-900">Synk basispriser</b> henter nye Kassalapp-priser kun for produkter i basisutvalget.</p>
               <p><b className="text-slate-900">Kassalapp-søk</b> brukes når du vil legge til enkeltvarer i basisutvalget eller rette en variant.</p>
             </div>
           </section>

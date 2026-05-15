@@ -196,8 +196,8 @@ export default function RecommendationsPage() {
           <section className="card p-5">
             <h2 className="font-semibold">Neste steg</h2>
             <ol className="mt-4 list-decimal space-y-2 pl-5 text-sm text-muted">
-              <li>Importer topp 50 på Produkter-siden.</li>
-              <li>Synk alle priser.</li>
+              <li>Legg til produkter i basisutvalget på Produkter-siden.</li>
+              <li>Synk basispriser.</li>
               <li>Juster lager og ønsket nivå.</li>
               <li>Generer anbefalinger på nytt.</li>
             </ol>

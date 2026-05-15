@@ -67,8 +67,8 @@ export async function GET(request: Request) {
       tables,
       missingOrBroken,
       nextSteps: [
-        "Importer topp 50 produkter",
-        "Synk alle priser",
+        "Legg til produkter i basisutvalget",
+        "Synk basispriser",
         "Generer anbefalinger",
         "Generer smart handleliste"
       ],

@@ -13,17 +13,9 @@ const steps = [
     url: "/api/bootstrap/status"
   },
   {
-    key: "import",
-    title: "Importer topp 50 produkter",
-    description: "Oppretter produktmaster, lagerlinjer og første prisobservasjoner.",
-    method: "POST",
-    url: "/api/import/top-products",
-    body: { dryRun: false }
-  },
-  {
     key: "sync",
-    title: "Synk alle priser",
-    description: "Henter oppdaterte priser fra Kassalapp for lagrede produkter.",
+    title: "Synk basispriser",
+    description: "Henter oppdaterte priser fra Kassalapp kun for produkter i basisutvalget.",
     method: "POST",
     url: "/api/products/sync-prices"
   },
