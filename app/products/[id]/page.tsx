@@ -28,10 +28,6 @@ type Product = {
   nutrition?: unknown | null;
   labels?: unknown | null;
   category_path?: string[] | null;
-  kassalapp_raw?: unknown | null;
-  openfoodfacts_raw?: unknown | null;
-  enrichment_sources?: unknown | null;
-  data_quality?: unknown | null;
 };
 
 type InventoryItem = {
@@ -102,7 +98,7 @@ function shortJson(value: unknown) {
   if (typeof value === "string") return value;
   if (Array.isArray(value)) {
     return value
-      .map((item) => (typeof item === "string" ? item : isRecord(item) ? item.name ?? item.label ?? item.value ?? JSON.stringify(item) : JSON.stringify(item)))
+      .map((item) => (typeof item === "string" ? item : item?.name ?? item?.label ?? item?.value ?? JSON.stringify(item)))
       .filter(Boolean)
       .join(", ");
   }
@@ -115,92 +111,6 @@ function shortJson(value: unknown) {
   return String(value);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function nestedRecord(value: unknown, key: string) {
-  if (!isRecord(value)) return null;
-  const next = value[key];
-  return isRecord(next) ? next : null;
-}
-
-function sourceSummary(product: Product, source: "kassalapp" | "openfoodfacts") {
-  return nestedRecord(product.enrichment_sources, source);
-}
-
-function sourceQuality(product: Product, source: "kassalapp" | "openfoodfacts") {
-  return nestedRecord(product.data_quality, source);
-}
-
-function sourceFetchedAt(product: Product, source: "kassalapp" | "openfoodfacts") {
-  const summary = sourceSummary(product, source);
-  const quality = sourceQuality(product, source);
-  const fetchedAt = summary?.fetched_at ?? quality?.fetched_at;
-  return typeof fetchedAt === "string" ? shortDateTime(fetchedAt) : "Ikke registrert";
-}
-
-function openFoodFactsImages(product: Product) {
-  const images = nestedRecord(sourceSummary(product, "openfoodfacts"), "images");
-  if (!images) return [] as Array<{ label: string; url: string }>;
-
-  return [
-    ["front", "Front"],
-    ["ingredients", "Ingredienser"],
-    ["nutrition", "Næring"],
-    ["packaging", "Emballasje"]
-  ].flatMap(([key, label]) => {
-    const url = images[key];
-    return typeof url === "string" && url.trim() ? [{ label, url }] : [];
-  });
-}
-
-
-function missingFoodInfoLabels(product: Product) {
-  const missing: string[] = [];
-
-  if (!product.image_url) missing.push("bilde");
-  if (!product.ingredients) missing.push("ingredienser");
-  if (!shortJson(product.allergens)) missing.push("allergener");
-  if (!shortJson(product.nutrition)) missing.push("næring");
-  if (!shortJson(product.labels)) missing.push("merking");
-  if (!product.category_path?.length) missing.push("kategori");
-
-  return missing;
-}
-
-function sourceFieldList(product: Product, source: "kassalapp" | "openfoodfacts") {
-  const fields = nestedRecord(sourceSummary(product, source), "fields");
-  if (!fields) return null;
-
-  const labels: Record<string, string> = {
-    name: "navn",
-    brand: "merke",
-    image_url: "bilde",
-    ingredients: "ingredienser",
-    allergens: "allergener",
-    nutrition: "næring",
-    labels: "merking",
-    category_path: "kategori"
-  };
-
-  const active = Object.entries(fields)
-    .filter(([, value]) => Boolean(value))
-    .map(([key]) => labels[key] ?? key);
-
-  return active.length ? active.join(", ") : null;
-}
-
-function mergedFieldSource(product: Product, field: "ingredients" | "allergens" | "nutrition" | "labels" | "category_path" | "image_url") {
-  const offSummary = sourceSummary(product, "openfoodfacts");
-  const offFields = nestedRecord(offSummary, "fields");
-
-  if (field === "image_url" && (offFields?.image_url || product.openfoodfacts_raw)) return "Open Food Facts";
-  if (offFields?.[field] || (field === "category_path" && offFields?.category_path)) return "Open Food Facts";
-  if (product.kassalapp_raw) return "Kassalapp";
-  return "Manuelt / ukjent";
-}
-
 export default function ProductRulesPage() {
   const params = useParams<{ id: string }>();
   const productId = params.id;
@@ -209,7 +119,6 @@ export default function ProductRulesPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [enriching, setEnriching] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -274,21 +183,6 @@ export default function ProductRulesPage() {
     await load();
   }
 
-  async function enrichProduct() {
-    setEnriching(true);
-    setError(null);
-    setMessage(null);
-    const response = await authFetch(`/api/products/${productId}/enrich`, { method: "POST" });
-    const payload = await response.json().catch(() => null);
-    setEnriching(false);
-    if (!response.ok) {
-      setError(payload?.error ?? payload?.message ?? "Kunne ikke berike produktdata");
-      return;
-    }
-    setMessage(payload?.message ?? "Produktdata er beriket fra Open Food Facts.");
-    await load();
-  }
-
   useEffect(() => {
     load().catch(() => undefined);
   }, [productId]);
@@ -302,19 +196,16 @@ export default function ProductRulesPage() {
   }, [data]);
 
   return (
-    <AppShell active="Produkter">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+    <AppShell active="Basisutvalg">
+      <div className="flex items-start justify-between gap-6">
         <div>
-          <Link href="/products" className="text-sm font-medium text-brand">← Tilbake til produkter</Link>
-          <h1 className="page-heading mt-3">Produkt i basisutvalg</h1>
-          <p className="page-subtitle">Sett målpris, lagergrenser og om produktet skal være med i basisutvalget.</p>
+          <Link href="/products" className="text-sm font-medium text-brand">← Tilbake til basisutvalg</Link>
+          <h1 className="mt-3 text-3xl font-bold">Produkt i basisutvalg</h1>
+          <p className="mt-1 text-muted">Sett målpris, lagergrenser og om produktet skal være med i basisutvalget.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex gap-2">
           <button onClick={syncProduct} disabled={syncing || loading} className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60">
             {syncing ? "Synker..." : "Synk pris for produkt"}
-          </button>
-          <button onClick={enrichProduct} disabled={enriching || loading || !data?.product.ean} className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60">
-            {enriching ? "Beriker..." : "Berik fra Open Food Facts"}
           </button>
           <button onClick={save} disabled={saving || loading} className="rounded-xl bg-brand px-5 py-2 text-sm font-semibold text-white disabled:opacity-60">
             {saving ? "Lagrer..." : "Lagre regler"}
@@ -322,20 +213,20 @@ export default function ProductRulesPage() {
         </div>
       </div>
 
-      {message ? <p className="notice-success mt-5">{message}</p> : null}
-      {error ? <p className="notice-error mt-5">{error}</p> : null}
+      {message ? <p className="mt-5 rounded-xl bg-emerald-50 p-3 text-sm text-brand">{message}</p> : null}
+      {error ? <p className="mt-5 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p> : null}
 
       {loading ? <div className="card mt-6 p-10 text-center text-muted">Henter produkt...</div> : null}
 
       {data ? (
         <>
-          <section className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
+          <section className="mt-6 grid grid-cols-[280px_1fr] gap-5">
             <div className="card p-5">
               <div className="grid h-44 place-items-center overflow-hidden rounded-2xl bg-slate-50 text-5xl">
                 {data.product.image_url ? <img src={data.product.image_url} alt="" className="h-full w-full object-contain" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : "🛒"}
               </div>
               <h2 className="mt-4 text-xl font-semibold">{data.product.name}</h2>
-              <p className="section-subtitle">{data.product.brand ?? "Ukjent merke"} · EAN {data.product.ean ?? "mangler"}</p>
+              <p className="mt-1 text-sm text-muted">{data.product.brand ?? "Ukjent merke"} · EAN {data.product.ean ?? "mangler"}</p>
               <div className="mt-4 flex flex-wrap gap-2">
                 {data.product.is_basis ? <span className="pill bg-emerald-50 text-brand">Basisutvalg</span> : <span className="pill bg-slate-100 text-muted">Ikke basis</span>}
                 {data.product.is_freezable ? <span className="pill bg-sky-50 text-sky-700">Kan fryses</span> : null}
@@ -343,7 +234,7 @@ export default function ProductRulesPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 xl:gap-5">
+            <div className="grid grid-cols-4 gap-5">
               <StatCard title="Siste pris" value={kr(latest?.price ?? null)} subtitle={latest ? `${latest.store_name} · ${priceSourceLabel(latest.source)}` : "Ingen prisdata"} />
               <StatCard title="Målpris" value={kr(data.product.target_price)} subtitle={data.product.target_price_unit === "unit_price" ? "Per enhet" : "Per stk/pakke"} tone="amber" />
               <StatCard title="Lager" value={`${stockTotal} / ${desiredTotal}`} subtitle="Faktisk / ønsket" tone={stockTotal < desiredTotal ? "red" : "green"} />
@@ -351,12 +242,12 @@ export default function ProductRulesPage() {
             </div>
           </section>
 
-          <div className="mt-6 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
+          <div className="mt-6 grid grid-cols-[1fr_420px] gap-5">
             <section className="card p-5">
-              <h2 className="section-title">Basisutvalg, regler og målpris</h2>
-              <p className="section-subtitle">Når Basisutvalg er på, brukes varen i lager, anbefalinger og automatisk handleliste. Slå av for å fjerne den fra basisutvalget uten å slette produktet.</p>
+              <h2 className="text-lg font-semibold">Basisutvalg, regler og målpris</h2>
+              <p className="mt-1 text-sm text-muted">Når Basisutvalg er på, brukes varen i lager, anbefalinger og automatisk handleliste. Slå av for å fjerne den fra basisutvalget uten å slette produktet.</p>
 
-              <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="mt-5 grid grid-cols-2 gap-4">
                 <label className="space-y-1 text-sm"><span className="font-medium">Produktnavn</span><input className="w-full rounded-xl border border-line px-3 py-2" value={String(form.name ?? "")} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
                 <label className="space-y-1 text-sm"><span className="font-medium">Merke</span><input className="w-full rounded-xl border border-line px-3 py-2" value={String(form.brand ?? "")} onChange={(e) => setForm({ ...form, brand: e.target.value })} /></label>
                 <label className="space-y-1 text-sm"><span className="font-medium">Kategori</span><input className="w-full rounded-xl border border-line px-3 py-2" placeholder="Hygiene, Italiensk, Meieri..." value={String(form.category ?? "")} onChange={(e) => setForm({ ...form, category: e.target.value })} /></label>
@@ -374,98 +265,29 @@ export default function ProductRulesPage() {
 
               <label className="mt-5 block space-y-1 text-sm"><span className="font-medium">Notater / regel</span><textarea className="min-h-28 w-full rounded-xl border border-line px-3 py-2" value={String(form.notes ?? "")} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Eksempel: Kjøp OMO under 50 kr når lager <= 1." /></label>
               <section className="mt-5 rounded-2xl border border-line bg-slate-50 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <h3 className="font-semibold">Matvareinformasjon</h3>
-                    <p className="mt-1 text-xs text-muted">Sammenslått visning fra lagrede produktfelt. Kilde vises per felt der appen kjenner datakilden.</p>
-                  </div>
-                  <button type="button" onClick={enrichProduct} disabled={enriching || loading || !data.product.ean} className="rounded-xl border border-line px-3 py-2 text-xs font-semibold text-brand disabled:opacity-60">
-                    {enriching ? "Beriker..." : "Berik fra Open Food Facts"}
-                  </button>
-                </div>
-
+                <h3 className="font-semibold">Produktdata fra Kassalapp</h3>
                 <div className="mt-3 space-y-3 text-sm">
                   {data.product.category_path?.length ? (
-                    <div><p className="text-xs uppercase tracking-wide text-muted">Kategori · {mergedFieldSource(data.product, "category_path")}</p><p>{data.product.category_path.join(" › ")}</p></div>
+                    <div><p className="text-xs uppercase tracking-wide text-muted">Kategori</p><p>{data.product.category_path.join(" › ")}</p></div>
                   ) : null}
                   {data.product.description ? (
                     <div><p className="text-xs uppercase tracking-wide text-muted">Beskrivelse</p><p>{data.product.description}</p></div>
                   ) : null}
                   {data.product.ingredients ? (
-                    <div><p className="text-xs uppercase tracking-wide text-muted">Ingredienser · {mergedFieldSource(data.product, "ingredients")}</p><p>{data.product.ingredients}</p></div>
+                    <div><p className="text-xs uppercase tracking-wide text-muted">Ingredienser</p><p>{data.product.ingredients}</p></div>
                   ) : null}
                   {shortJson(data.product.allergens) ? (
-                    <div><p className="text-xs uppercase tracking-wide text-muted">Allergener · {mergedFieldSource(data.product, "allergens")}</p><p>{shortJson(data.product.allergens)}</p><p className="mt-1 text-xs text-amber-700">Kontroller alltid emballasjen ved allergi.</p></div>
+                    <div><p className="text-xs uppercase tracking-wide text-muted">Allergener</p><p>{shortJson(data.product.allergens)}</p></div>
                   ) : null}
                   {shortJson(data.product.nutrition) ? (
-                    <div><p className="text-xs uppercase tracking-wide text-muted">Næring · {mergedFieldSource(data.product, "nutrition")}</p><p>{shortJson(data.product.nutrition)}</p></div>
+                    <div><p className="text-xs uppercase tracking-wide text-muted">Næring</p><p>{shortJson(data.product.nutrition)}</p></div>
                   ) : null}
                   {shortJson(data.product.labels) ? (
-                    <div><p className="text-xs uppercase tracking-wide text-muted">Merking · {mergedFieldSource(data.product, "labels")}</p><p>{shortJson(data.product.labels)}</p></div>
+                    <div><p className="text-xs uppercase tracking-wide text-muted">Merking</p><p>{shortJson(data.product.labels)}</p></div>
                   ) : null}
-                  {missingFoodInfoLabels(data.product).length ? (
-                    <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 text-xs text-amber-800">
-                      <p className="font-semibold">Mangler fortsatt: {missingFoodInfoLabels(data.product).join(", ")}</p>
-                      <p className="mt-1">Open Food Facts er brukergenerert. Kontroller alltid emballasjen ved allergi.</p>
-                    </div>
-                  ) : (
-                    <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-xs text-brand">
-                      Viktige matvarefelt er fylt ut. Kontroller likevel emballasjen ved allergi.
-                    </div>
-                  )}
-
                   {!data.product.description && !data.product.ingredients && !data.product.allergens && !data.product.nutrition && !data.product.labels && !data.product.category_path?.length ? (
-                    <p className="text-muted">Ingen ekstra matvareinformasjon lagret ennå. Trykk Berik fra Open Food Facts eller Synk pris for produkt.</p>
+                    <p className="text-muted">Ingen ekstra produktdata lagret ennå. Trykk Synk pris for produkt.</p>
                   ) : null}
-                </div>
-              </section>
-
-              <section className="mt-5 rounded-2xl border border-line bg-white p-4">
-                <h3 className="font-semibold">Eksterne datakilder</h3>
-                <p className="mt-1 text-xs text-muted">Rådata holdes adskilt per datakilde. Feltene under er status og sammendrag, ikke blandet rådata.</p>
-
-                <div className="mt-4 grid gap-3 md:grid-cols-2">
-                  <div className="rounded-2xl border border-line bg-slate-50 p-4 text-sm">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h4 className="font-semibold">Kassalapp</h4>
-                        <p className="mt-1 text-xs text-muted">Norske produktdata og prisgrunnlag.</p>
-                      </div>
-                      <span className={`rounded-full px-2 py-1 text-xs font-semibold ${data.product.kassalapp_raw ? "bg-emerald-50 text-brand" : "bg-slate-100 text-muted"}`}>
-                        {data.product.kassalapp_raw ? "Data lagret" : "Ingen rådata"}
-                      </span>
-                    </div>
-                    <dl className="mt-3 space-y-2 text-xs">
-                      <div><dt className="font-semibold text-slate-500">Sist hentet</dt><dd>{sourceFetchedAt(data.product, "kassalapp")}</dd></div>
-                      <div><dt className="font-semibold text-slate-500">Felter</dt><dd>{sourceFieldList(data.product, "kassalapp") ?? (data.product.kassalapp_raw ? "Produktnavn, merke, bilde, kategori og/eller prisdata" : "Ikke registrert på produktet")}</dd></div>
-                    </dl>
-                  </div>
-
-                  <div className="rounded-2xl border border-line bg-slate-50 p-4 text-sm">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h4 className="font-semibold">Open Food Facts</h4>
-                        <p className="mt-1 text-xs text-muted">Ingredienser, allergener, næring og ekstra bilder.</p>
-                      </div>
-                      <span className={`rounded-full px-2 py-1 text-xs font-semibold ${data.product.openfoodfacts_raw ? "bg-emerald-50 text-brand" : "bg-slate-100 text-muted"}`}>
-                        {data.product.openfoodfacts_raw ? "Data lagret" : "Ikke hentet"}
-                      </span>
-                    </div>
-                    <dl className="mt-3 space-y-2 text-xs">
-                      <div><dt className="font-semibold text-slate-500">Sist hentet</dt><dd>{sourceFetchedAt(data.product, "openfoodfacts")}</dd></div>
-                      <div><dt className="font-semibold text-slate-500">Felter</dt><dd>{sourceFieldList(data.product, "openfoodfacts") ?? "Ikke registrert"}</dd></div>
-                      <div><dt className="font-semibold text-slate-500">Datakvalitet</dt><dd>{shortJson(sourceQuality(data.product, "openfoodfacts")) ?? "Ikke registrert"}</dd></div>
-                    </dl>
-                    {openFoodFactsImages(data.product).length ? (
-                      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        {openFoodFactsImages(data.product).map((image) => (
-                          <a key={image.label} href={image.url} target="_blank" rel="noreferrer" className="rounded-xl border border-line bg-white p-2 text-xs font-medium text-brand">
-                            {image.label}-bilde
-                          </a>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
                 </div>
               </section>
 
@@ -484,7 +306,7 @@ export default function ProductRulesPage() {
                       <p className="font-bold text-brand">{kr(item.price)}</p>
                     </div>
                   ))}
-                  {!data.lowest_by_store.length ? <p className="text-sm leading-6 text-muted">Ingen prisobservasjoner ennå.</p> : null}
+                  {!data.lowest_by_store.length ? <p className="text-sm text-muted">Ingen prisobservasjoner ennå.</p> : null}
                 </div>
               </section>
 
@@ -497,7 +319,7 @@ export default function ProductRulesPage() {
                       <p className="mt-1 text-xs text-muted">Oppdatert {shortDate(item.updated_at)}</p>
                     </div>
                   ))}
-                  {!data.inventory.length ? <p className="text-sm leading-6 text-muted">Ingen lagerlinje ennå. Lagre regler for å opprette en.</p> : null}
+                  {!data.inventory.length ? <p className="text-sm text-muted">Ingen lagerlinje ennå. Lagre regler for å opprette en.</p> : null}
                 </div>
               </section>
             </aside>

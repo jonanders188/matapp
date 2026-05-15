@@ -9,6 +9,34 @@ type ApiErrorLike = {
   hint?: string;
 };
 
+type ProductRow = Record<string, any> & {
+  id: string;
+  household_id: string | null;
+  name: string;
+  target_price?: number | null;
+  target_price_unit?: string | null;
+  desired_stock?: number | null;
+  is_basis?: boolean | null;
+  is_freezable?: boolean | null;
+  preferred_store?: string | null;
+  notes?: string | null;
+};
+
+type HouseholdProductRow = {
+  id: string;
+  household_id: string;
+  product_id: string;
+  is_basis: boolean | null;
+  desired_stock: number | null;
+  target_price: number | null;
+  target_price_unit: string | null;
+  preferred_store: string | null;
+  is_freezable: boolean | null;
+  notes: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
 function errorPayload(error: unknown, fallback: string) {
   const err = error as ApiErrorLike | null;
   return {
@@ -29,21 +57,53 @@ function toBoolean(value: unknown) {
   return value === true || value === "true" || value === "on";
 }
 
-export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
+function mergeHouseholdProduct(product: ProductRow, householdProduct?: HouseholdProductRow | null) {
+  if (!householdProduct) return product;
+
+  return {
+    ...product,
+    is_basis: householdProduct.is_basis ?? product.is_basis,
+    desired_stock: householdProduct.desired_stock ?? product.desired_stock,
+    target_price: householdProduct.target_price ?? product.target_price,
+    target_price_unit: householdProduct.target_price_unit ?? product.target_price_unit,
+    preferred_store: householdProduct.preferred_store ?? product.preferred_store,
+    is_freezable: householdProduct.is_freezable ?? product.is_freezable,
+    notes: householdProduct.notes ?? product.notes,
+    household_product_id: householdProduct.id,
+    household_product_updated_at: householdProduct.updated_at
+  };
+}
+
+async function loadProductForHousehold(productId: string, householdId: string) {
+  const supabase = getSupabaseAdmin();
+
+  const productResult = await supabase.from("products").select("*").eq("id", productId).limit(1);
+  if (productResult.error) throw productResult.error;
+
+  const product = productResult.data?.[0] as ProductRow | undefined;
+  if (!product) return { product: null as ProductRow | null, householdProduct: null as HouseholdProductRow | null };
+
+  const householdProductResult = await supabase
+    .from("household_products")
+    .select("id, household_id, product_id, is_basis, desired_stock, target_price, target_price_unit, preferred_store, is_freezable, notes, created_at, updated_at")
+    .eq("household_id", householdId)
+    .eq("product_id", productId)
+    .limit(1);
+
+  if (householdProductResult.error) throw householdProductResult.error;
+
+  const householdProduct = (householdProductResult.data?.[0] ?? null) as HouseholdProductRow | null;
+
+  return { product, householdProduct };
+}
+
+export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await context.params;
     const supabase = getSupabaseAdmin();
-    const { householdId } = await requireCurrentHousehold(_request);
+    const { householdId } = await requireCurrentHousehold(request);
 
-    const productResult = await supabase
-      .from("products")
-      .select("*")
-      .eq("household_id", householdId)
-      .eq("id", id)
-      .limit(1);
-
-    if (productResult.error) throw productResult.error;
-    const product = productResult.data?.[0];
+    const { product, householdProduct } = await loadProductForHousehold(id, householdId);
 
     if (!product) {
       return NextResponse.json({ error: "Fant ikke produkt" }, { status: 404 });
@@ -69,7 +129,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
 
     const lowestByStore = new Map<string, { store_name: string; price: number; unit_price: number | null; observed_at: string; source: string | null; source_url: string | null }>();
     for (const observation of priceResult.data ?? []) {
-      const key = observation.store_name || observation.store_code;
+      const key = observation.store_code || observation.store_name;
       const existing = lowestByStore.get(key);
       if (!existing || Number(observation.price) < Number(existing.price)) {
         lowestByStore.set(key, {
@@ -85,7 +145,8 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
 
     return NextResponse.json({
       data: {
-        product,
+        product: mergeHouseholdProduct(product, householdProduct),
+        household_product: householdProduct,
         inventory: inventoryResult.data ?? [],
         price_observations: priceResult.data ?? [],
         lowest_by_store: Array.from(lowestByStore.values()).sort((a, b) => Number(a.price) - Number(b.price))
@@ -104,7 +165,12 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     const supabase = getSupabaseAdmin();
     const { householdId } = await requireCurrentHousehold(request);
 
-    const updatePayload = {
+    const { product, householdProduct } = await loadProductForHousehold(id, householdId);
+    if (!product) {
+      return NextResponse.json({ error: "Fant ikke produkt" }, { status: 404 });
+    }
+
+    const productUpdatePayload = {
       name: String(body.name ?? "").trim(),
       brand: body.brand ? String(body.brand).trim() : null,
       category: body.category ? String(body.category).trim() : null,
@@ -118,24 +184,35 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       notes: body.notes ? String(body.notes).trim() : null
     };
 
-    if (!updatePayload.name) {
+    if (!productUpdatePayload.name) {
       return NextResponse.json({ error: "Produktnavn mangler" }, { status: 400 });
     }
 
-    const result = await supabase
-      .from("products")
-      .update(updatePayload)
-      .eq("household_id", householdId)
-      .eq("id", id)
-      .select("*")
-      .limit(1);
-
-    if (result.error) throw result.error;
-    if (!result.data?.[0]) {
-      return NextResponse.json({ error: "Fant ikke produkt" }, { status: 404 });
-    }
+    const productUpdate = await supabase.from("products").update(productUpdatePayload).eq("id", id).select("*").single();
+    if (productUpdate.error) throw productUpdate.error;
 
     const desiredQuantity = toNullableNumber(body.desired_stock) ?? 0;
+    const isBasis = toBoolean(body.is_basis);
+    const now = new Date().toISOString();
+    const householdPayload = {
+      household_id: householdId,
+      product_id: id,
+      is_basis: isBasis,
+      desired_stock: desiredQuantity,
+      target_price: toNullableNumber(body.target_price),
+      target_price_unit: body.target_price_unit === "unit_price" ? "unit_price" : "unit",
+      preferred_store: body.preferred_store ? String(body.preferred_store).trim() : null,
+      is_freezable: toBoolean(body.is_freezable),
+      notes: body.notes ? String(body.notes).trim() : null,
+      updated_at: now
+    };
+
+    const householdUpdate = householdProduct
+      ? await supabase.from("household_products").update(householdPayload).eq("id", householdProduct.id).select("*").single()
+      : await supabase.from("household_products").insert(householdPayload).select("*").single();
+
+    if (householdUpdate.error) throw householdUpdate.error;
+
     const existingInventory = await supabase
       .from("inventory_items")
       .select("id")
@@ -149,21 +226,21 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     if (existingInventory.data?.[0]) {
       const inventoryUpdate = await supabase
         .from("inventory_items")
-        .update({ desired_quantity: desiredQuantity, updated_at: new Date().toISOString() })
+        .update({ desired_quantity: desiredQuantity, updated_at: now })
         .eq("id", existingInventory.data[0].id);
       if (inventoryUpdate.error) throw inventoryUpdate.error;
-    } else {
+    } else if (isBasis) {
       const inventoryInsert = await supabase.from("inventory_items").insert({
         household_id: householdId,
         product_id: id,
-        location: body.is_freezable ? "Fryser" : "Kjokken",
+        location: toBoolean(body.is_freezable) ? "Fryser" : "Kjokken",
         quantity: 0,
         desired_quantity: desiredQuantity
       });
       if (inventoryInsert.error) throw inventoryInsert.error;
     }
 
-    return NextResponse.json({ data: result.data[0] });
+    return NextResponse.json({ data: mergeHouseholdProduct(productUpdate.data as ProductRow, householdUpdate.data as HouseholdProductRow) });
   } catch (error) {
     console.error("[api/products/[id]] PATCH feilet", errorPayload(error, "Kunne ikke lagre produktregler"));
     return apiErrorResponse(error);

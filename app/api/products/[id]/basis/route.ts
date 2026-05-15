@@ -23,7 +23,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     if (productResult.error) throw productResult.error;
 
     const product = productResult.data?.[0];
-    if (!product || (product.household_id && product.household_id !== householdId)) {
+    if (!product) {
       return NextResponse.json({ error: "Fant ikke produkt" }, { status: 404 });
     }
 
@@ -40,7 +40,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       household_id: householdId,
       product_id: id,
       is_basis: isBasis,
-      desired_stock: product.desired_stock ?? 0,
+      desired_stock: product.desired_stock ?? 1,
       target_price: product.target_price ?? null,
       target_price_unit: product.target_price_unit ?? "unit",
       preferred_store: product.preferred_store ?? null,
@@ -55,7 +55,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 
     if (result.error) throw result.error;
 
-    // Keep the old column updated as a compatibility fallback while the app migrates.
+    // Compatibility while older screens still look at products.is_basis.
     const legacy = await supabase
       .from("products")
       .update({ is_basis: isBasis })

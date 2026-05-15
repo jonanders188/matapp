@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   Box,
+  Database,
   PackageSearch,
   ReceiptText,
   Settings,
@@ -28,7 +29,8 @@ const navSections: { title: string; items: NavItem[] }[] = [
   {
     title: "Varer",
     items: [
-      { label: "Produkter", href: "/products", icon: PackageSearch, description: "Basisutvalg" },
+      { label: "Basisutvalg", href: "/products", icon: PackageSearch, aliases: ["Produkter"], description: "Husholdningens varer" },
+      { label: "Produktregister", href: "/catalog", icon: Database, aliases: ["Katalog"], description: "Søk og legg til" },
       { label: "Lager", href: "/inventory", icon: Box, description: "Hva dere har" },
       { label: "Skann vare", href: "/mobile", icon: Smartphone, aliases: ["Mobil lager"], description: "Inn og ut av lager" },
       { label: "Kjøp", href: "/purchases", icon: ReceiptText, description: "Historikk" }
@@ -44,7 +46,7 @@ const navSections: { title: string; items: NavItem[] }[] = [
 
 const quickActions = [
   { label: "Skann", href: "/mobile" },
-  { label: "Legg til vare", href: "/products" }
+  { label: "Legg til vare", href: "/catalog" }
 ] as const;
 
 function isActive(item: NavItem, active: string) {
