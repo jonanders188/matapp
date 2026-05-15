@@ -16,16 +16,37 @@ export async function GET(request: Request) {
 
     if (error) throw error;
 
+    const storesByKey = new Map<string, {
+      storeKey: string;
+      storeName: string;
+      isEnabled: boolean;
+      priority: number;
+    }>();
+
+    for (const store of data ?? []) {
+      const storeKey = String(store.store_key ?? "").trim().toLowerCase();
+      const storeName = String(store.store_name ?? "").trim();
+      if (!storeKey || !storeName) continue;
+
+      const next = {
+        storeKey,
+        storeName,
+        isEnabled: Boolean(store.is_enabled),
+        priority: Number(store.priority ?? 100)
+      };
+
+      const existing = storesByKey.get(storeKey);
+      if (!existing || next.priority < existing.priority || (next.isEnabled && !existing.isEnabled)) {
+        storesByKey.set(storeKey, next);
+      }
+    }
+
     return NextResponse.json({
       data: {
-        stores: (data ?? [])
-          .filter((store) => store.store_key && store.store_name)
-          .map((store) => ({
-            storeKey: store.store_key,
-            storeName: store.store_name,
-            isEnabled: Boolean(store.is_enabled),
-            priority: Number(store.priority ?? 100)
-          }))
+        stores: [...storesByKey.values()].sort((a, b) => {
+          if (a.priority !== b.priority) return a.priority - b.priority;
+          return a.storeName.localeCompare(b.storeName, "nb");
+        })
       }
     });
   } catch (error) {

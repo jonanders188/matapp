@@ -144,29 +144,9 @@ export async function searchKassalappProducts(query: string, limit = 12) {
     if (eanProducts.length) return eanProducts.slice(0, limit);
   }
 
-  // Kassalapp dokumenterer exclude_without_ean og unique som boolean-parametere.
-  // Noen miljøer har likevel svart med valideringsfeil på boolske queryverdier,
-  // så vi prøver dokumentert format først, deretter 0/1, og til slutt uten disse.
-  try {
-    return await searchProductsWithParams(trimmed, limit, {
-      exclude_without_ean: false,
-      unique: false
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "";
-    if (!/exclude_without_ean|unique|true or false|boolean/i.test(message)) throw error;
-  }
-
-  try {
-    return await searchProductsWithParams(trimmed, limit, {
-      exclude_without_ean: 0,
-      unique: 0
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "";
-    if (!/exclude_without_ean|unique|true or false|boolean/i.test(message)) throw error;
-  }
-
+  // Do not send unique or exclude_without_ean here. The API has returned
+  // validation errors for those parameters in this app, even when formatted as
+  // booleans. EAN searches are handled by /products/ean/<EAN> above.
   return searchProductsWithParams(trimmed, limit, {});
 }
 

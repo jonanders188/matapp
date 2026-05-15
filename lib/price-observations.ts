@@ -13,8 +13,34 @@ type PriceObservationInput = {
   raw: KassalappProduct;
 };
 
+const STORE_NAMES: Record<string, string> = {
+  kiwi: "KIWI",
+  rema_1000: "REMA 1000",
+  meny_no: "Meny",
+  coop_no: "Coop",
+  oda_no: "Oda",
+  spar_no: "SPAR",
+  joker_no: "Joker",
+  europris_no: "Europris",
+  bunnpris: "Bunnpris",
+  engrossnett_no: "Engrosnett"
+};
+
+export function normalizeStoreCode(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_");
+}
+
+export function canonicalStoreName(storeCode: unknown, fallback: unknown) {
+  const normalized = normalizeStoreCode(storeCode);
+  const fallbackName = String(fallback ?? storeCode ?? "Ukjent butikk").trim();
+  return STORE_NAMES[normalized] ?? fallbackName;
+}
+
 function candidateKey(product: KassalappProduct) {
-  return `${product.store?.code || product.store?.name || "unknown"}`.trim();
+  return normalizeStoreCode(product.store?.code || product.store?.name || "unknown");
 }
 
 function observedAt(product: KassalappProduct) {
@@ -70,8 +96,8 @@ export function priceObservationRows(
 ): PriceObservationInput[] {
   return priceProductsForProduct(product, relatedProducts).map((candidate) => ({
     product_id: productId,
-    store_code: candidate.store!.code || candidate.store!.name,
-    store_name: candidate.store!.name,
+    store_code: normalizeStoreCode(candidate.store!.code || candidate.store!.name),
+    store_name: canonicalStoreName(candidate.store!.code || candidate.store!.name, candidate.store!.name),
     price: candidate.current_price!,
     unit_price: candidate.current_unit_price ?? null,
     observed_at: observedAt(candidate),
@@ -91,11 +117,43 @@ export async function insertPriceObservations(
   if (!rows.length) return { inserted: 0, error: null as string | null };
 
   const supabase = getSupabaseAdmin();
-  const { error } = await supabase.from("price_observations").insert(rows);
+  const storeCodes = [...new Set(rows.map((row) => row.store_code))];
+  const observedDates = [...new Set(rows.map((row) => row.observed_at))];
+
+  const { data: existing, error: existingError } = await supabase
+    .from("price_observations")
+    .select("store_code, price, observed_at, source")
+    .eq("product_id", productId)
+    .in("store_code", storeCodes)
+    .in("observed_at", observedDates);
+
+  if (existingError) {
+    return { inserted: 0, error: existingError.message };
+  }
+
+  const existingKeys = new Set(
+    (existing ?? []).map((row) => [
+      normalizeStoreCode(row.store_code),
+      Number(row.price),
+      row.observed_at,
+      row.source ?? ""
+    ].join("|"))
+  );
+
+  const newRows = rows.filter((row) => !existingKeys.has([
+    normalizeStoreCode(row.store_code),
+    Number(row.price),
+    row.observed_at,
+    row.source
+  ].join("|")));
+
+  if (!newRows.length) return { inserted: 0, error: null as string | null };
+
+  const { error } = await supabase.from("price_observations").insert(newRows);
 
   if (error) {
     return { inserted: 0, error: error.message };
   }
 
-  return { inserted: rows.length, error: null as string | null };
+  return { inserted: newRows.length, error: null as string | null };
 }

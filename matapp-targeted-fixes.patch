@@ -1,0 +1,269 @@
+diff -ru repo_orig/husholdningspilot-mvp/app/api/admin/stores/route.ts repo_inspect/husholdningspilot-mvp/app/api/admin/stores/route.ts
+--- repo_orig/husholdningspilot-mvp/app/api/admin/stores/route.ts	2026-05-15 12:21:33.000000000 +0000
++++ repo_inspect/husholdningspilot-mvp/app/api/admin/stores/route.ts	2026-05-15 13:21:20.246122212 +0000
+@@ -17,6 +17,19 @@
+   store_name: string;
+ };
+ 
++const STANDARD_STORES: Array<{ store_key: string; store_name: string; priority: number; is_enabled: boolean }> = [
++  { store_key: "kiwi", store_name: "KIWI", priority: 100, is_enabled: true },
++  { store_key: "rema_1000", store_name: "REMA 1000", priority: 100, is_enabled: true },
++  { store_key: "meny_no", store_name: "Meny", priority: 100, is_enabled: true },
++  { store_key: "coop_no", store_name: "Coop", priority: 100, is_enabled: true },
++  { store_key: "oda_no", store_name: "Oda", priority: 100, is_enabled: true },
++  { store_key: "spar_no", store_name: "SPAR", priority: 100, is_enabled: true },
++  { store_key: "joker_no", store_name: "Joker", priority: 100, is_enabled: true },
++  { store_key: "europris_no", store_name: "Europris", priority: 100, is_enabled: true },
++  { store_key: "bunnpris", store_name: "Bunnpris", priority: 100, is_enabled: true },
++  { store_key: "engrossnett_no", store_name: "Engrosnett", priority: 100, is_enabled: true }
++];
++
+ function requireAdminRole(role: string) {
+   if (role !== "admin") {
+     throw Object.assign(new Error("Kun admin kan gjøre dette"), { status: 403 });
+@@ -127,10 +140,22 @@
+ 
+   // Important: GET must be read-only. Previously this endpoint inserted stores
+   // discovered from price observations, so simply opening Admin could recreate
+-  // duplicate store preference rows. New stores must be added explicitly in Admin
+-  // or via migrations, not as a side-effect of reading the page.
++  // duplicate store preference rows. Missing standard stores are shown in the
++  // response only; they are not persisted before the user saves changes.
+   void observedStores;
+ 
++  for (const standard of STANDARD_STORES) {
++    const key = normalizeStoreKey(standard.store_key);
++    if (!preferences.has(key)) {
++      preferences.set(key, {
++        store_key: key,
++        store_name: standard.store_name,
++        priority: standard.priority,
++        is_enabled: standard.is_enabled
++      });
++    }
++  }
++
+   return [...preferences.values()].sort((a, b) => {
+     const priorityDiff = toPriority(a.priority) - toPriority(b.priority);
+     if (priorityDiff !== 0) return priorityDiff;
+diff -ru repo_orig/husholdningspilot-mvp/app/api/cron/sync-prices/route.ts repo_inspect/husholdningspilot-mvp/app/api/cron/sync-prices/route.ts
+--- repo_orig/husholdningspilot-mvp/app/api/cron/sync-prices/route.ts	2026-05-15 11:07:50.000000000 +0000
++++ repo_inspect/husholdningspilot-mvp/app/api/cron/sync-prices/route.ts	2026-05-15 13:21:58.005722032 +0000
+@@ -2,6 +2,7 @@
+ import { requireAdminAccess } from "@/lib/admin-guard";
+ import { getSupabaseAdmin } from "@/lib/supabase-server";
+ import { searchKassalappProducts } from "@/lib/kassalapp";
++import { canonicalStoreName, normalizeStoreCode } from "@/lib/price-observations";
+ 
+ export async function GET(request: Request) {
+   const unauthorized = await requireAdminAccess(request);
+@@ -27,8 +28,8 @@
+         if (!match.store || match.current_price == null) continue;
+         const { error: insertError } = await supabase.from("price_observations").insert({
+           product_id: savedProduct.id,
+-          store_code: match.store.code,
+-          store_name: match.store.name,
++          store_code: normalizeStoreCode(match.store.code || match.store.name),
++          store_name: canonicalStoreName(match.store.code || match.store.name, match.store.name),
+           price: match.current_price,
+           unit_price: match.current_unit_price ?? null,
+           observed_at: match.price_history?.[0]?.date ?? new Date().toISOString(),
+diff -ru repo_orig/husholdningspilot-mvp/app/api/dashboard/basis-prices/route.ts repo_inspect/husholdningspilot-mvp/app/api/dashboard/basis-prices/route.ts
+--- repo_orig/husholdningspilot-mvp/app/api/dashboard/basis-prices/route.ts	2026-05-15 11:07:50.000000000 +0000
++++ repo_inspect/husholdningspilot-mvp/app/api/dashboard/basis-prices/route.ts	2026-05-15 13:21:10.288227213 +0000
+@@ -90,7 +90,7 @@
+ }
+ 
+ function storeKey(observation: Pick<PriceObservationRow, "store_code" | "store_name">) {
+-  return String(observation.store_code || observation.store_name).trim();
++  return String(observation.store_code || observation.store_name).trim().toLowerCase();
+ }
+ 
+ function observationKey(observation: PriceObservationRow) {
+@@ -158,7 +158,10 @@
+ 
+     const storePreferences = new Map<string, StorePreferenceRow>();
+     for (const preference of (storePreferencesData ?? []) as StorePreferenceRow[]) {
+-      storePreferences.set(preference.store_key, preference);
++      storePreferences.set(String(preference.store_key).trim().toLowerCase(), {
++        ...preference,
++        store_key: String(preference.store_key).trim().toLowerCase()
++      });
+     }
+ 
+     function preferenceFor(observation: Pick<PriceObservationRow, "store_code" | "store_name">) {
+diff -ru repo_orig/husholdningspilot-mvp/app/api/import/top-products/route.ts repo_inspect/husholdningspilot-mvp/app/api/import/top-products/route.ts
+--- repo_orig/husholdningspilot-mvp/app/api/import/top-products/route.ts	2026-05-15 11:37:21.000000000 +0000
++++ repo_inspect/husholdningspilot-mvp/app/api/import/top-products/route.ts	2026-05-15 13:21:58.005356974 +0000
+@@ -3,6 +3,7 @@
+ import { TOP_50_PRODUCTS, type TopProductSeed } from "@/lib/top-products";
+ import { normalizeCategory, packageSize, productMetadataPayload, searchKassalappProducts, type KassalappProduct } from "@/lib/kassalapp";
+ import { getSupabaseAdmin } from "@/lib/supabase-server";
++import { canonicalStoreName, normalizeStoreCode } from "@/lib/price-observations";
+ 
+ type ImportBody = {
+   dryRun?: boolean;
+@@ -155,8 +156,8 @@
+     .filter((match) => match.store && match.current_price != null)
+     .map((match) => ({
+       product_id: productId,
+-      store_code: match.store!.code,
+-      store_name: match.store!.name,
++      store_code: normalizeStoreCode(match.store!.code || match.store!.name),
++      store_name: canonicalStoreName(match.store!.code || match.store!.name, match.store!.name),
+       price: match.current_price!,
+       unit_price: match.current_unit_price ?? null,
+       observed_at: match.price_history?.[0]?.date ?? new Date().toISOString(),
+diff -ru repo_orig/husholdningspilot-mvp/app/api/mobile/scan/route.ts repo_inspect/husholdningspilot-mvp/app/api/mobile/scan/route.ts
+--- repo_orig/husholdningspilot-mvp/app/api/mobile/scan/route.ts	2026-05-15 11:37:21.000000000 +0000
++++ repo_inspect/husholdningspilot-mvp/app/api/mobile/scan/route.ts	2026-05-15 13:21:41.519607081 +0000
+@@ -93,7 +93,7 @@
+ }
+ 
+ async function canonicalReceiptStore(householdId: string, receipt?: ReceiptMatchInput) {
+-  const requestedKey = String(receipt?.storeKey ?? "").trim();
++  const requestedKey = String(receipt?.storeKey ?? "").trim().toLowerCase();
+   const requestedName = String(receipt?.storeName ?? "").trim();
+   const supabase = getSupabaseAdmin();
+ 
+@@ -107,7 +107,7 @@
+   const stores = data ?? [];
+ 
+   if (requestedKey) {
+-    const keyMatch = stores.find((store) => String(store.store_key ?? "") === requestedKey);
++    const keyMatch = stores.find((store) => String(store.store_key ?? "").trim().toLowerCase() === requestedKey);
+     if (keyMatch?.store_key && keyMatch?.store_name) {
+       return { storeKey: keyMatch.store_key, storeName: keyMatch.store_name };
+     }
+diff -ru repo_orig/husholdningspilot-mvp/lib/kassalapp.ts repo_inspect/husholdningspilot-mvp/lib/kassalapp.ts
+--- repo_orig/husholdningspilot-mvp/lib/kassalapp.ts	2026-05-15 11:37:21.000000000 +0000
++++ repo_inspect/husholdningspilot-mvp/lib/kassalapp.ts	2026-05-15 13:21:33.250164024 +0000
+@@ -144,29 +144,9 @@
+     if (eanProducts.length) return eanProducts.slice(0, limit);
+   }
+ 
+-  // Kassalapp dokumenterer exclude_without_ean og unique som boolean-parametere.
+-  // Noen miljøer har likevel svart med valideringsfeil på boolske queryverdier,
+-  // så vi prøver dokumentert format først, deretter 0/1, og til slutt uten disse.
+-  try {
+-    return await searchProductsWithParams(trimmed, limit, {
+-      exclude_without_ean: false,
+-      unique: false
+-    });
+-  } catch (error) {
+-    const message = error instanceof Error ? error.message : "";
+-    if (!/exclude_without_ean|unique|true or false|boolean/i.test(message)) throw error;
+-  }
+-
+-  try {
+-    return await searchProductsWithParams(trimmed, limit, {
+-      exclude_without_ean: 0,
+-      unique: 0
+-    });
+-  } catch (error) {
+-    const message = error instanceof Error ? error.message : "";
+-    if (!/exclude_without_ean|unique|true or false|boolean/i.test(message)) throw error;
+-  }
+-
++  // Do not send unique or exclude_without_ean here. The API has returned
++  // validation errors for those parameters in this app, even when formatted as
++  // booleans. EAN searches are handled by /products/ean/<EAN> above.
+   return searchProductsWithParams(trimmed, limit, {});
+ }
+ 
+diff -ru repo_orig/husholdningspilot-mvp/lib/price-observations.ts repo_inspect/husholdningspilot-mvp/lib/price-observations.ts
+--- repo_orig/husholdningspilot-mvp/lib/price-observations.ts	2026-05-15 11:08:00.000000000 +0000
++++ repo_inspect/husholdningspilot-mvp/lib/price-observations.ts	2026-05-15 13:21:03.330782020 +0000
+@@ -13,8 +13,34 @@
+   raw: KassalappProduct;
+ };
+ 
++const STORE_NAMES: Record<string, string> = {
++  kiwi: "KIWI",
++  rema_1000: "REMA 1000",
++  meny_no: "Meny",
++  coop_no: "Coop",
++  oda_no: "Oda",
++  spar_no: "SPAR",
++  joker_no: "Joker",
++  europris_no: "Europris",
++  bunnpris: "Bunnpris",
++  engrossnett_no: "Engrosnett"
++};
++
++export function normalizeStoreCode(value: unknown) {
++  return String(value ?? "")
++    .trim()
++    .toLowerCase()
++    .replace(/\s+/g, "_");
++}
++
++export function canonicalStoreName(storeCode: unknown, fallback: unknown) {
++  const normalized = normalizeStoreCode(storeCode);
++  const fallbackName = String(fallback ?? storeCode ?? "Ukjent butikk").trim();
++  return STORE_NAMES[normalized] ?? fallbackName;
++}
++
+ function candidateKey(product: KassalappProduct) {
+-  return `${product.store?.code || product.store?.name || "unknown"}`.trim();
++  return normalizeStoreCode(product.store?.code || product.store?.name || "unknown");
+ }
+ 
+ function observedAt(product: KassalappProduct) {
+@@ -70,8 +96,8 @@
+ ): PriceObservationInput[] {
+   return priceProductsForProduct(product, relatedProducts).map((candidate) => ({
+     product_id: productId,
+-    store_code: candidate.store!.code || candidate.store!.name,
+-    store_name: candidate.store!.name,
++    store_code: normalizeStoreCode(candidate.store!.code || candidate.store!.name),
++    store_name: canonicalStoreName(candidate.store!.code || candidate.store!.name, candidate.store!.name),
+     price: candidate.current_price!,
+     unit_price: candidate.current_unit_price ?? null,
+     observed_at: observedAt(candidate),
+@@ -91,11 +117,43 @@
+   if (!rows.length) return { inserted: 0, error: null as string | null };
+ 
+   const supabase = getSupabaseAdmin();
+-  const { error } = await supabase.from("price_observations").insert(rows);
++  const storeCodes = [...new Set(rows.map((row) => row.store_code))];
++  const observedDates = [...new Set(rows.map((row) => row.observed_at))];
++
++  const { data: existing, error: existingError } = await supabase
++    .from("price_observations")
++    .select("store_code, price, observed_at, source")
++    .eq("product_id", productId)
++    .in("store_code", storeCodes)
++    .in("observed_at", observedDates);
++
++  if (existingError) {
++    return { inserted: 0, error: existingError.message };
++  }
++
++  const existingKeys = new Set(
++    (existing ?? []).map((row) => [
++      normalizeStoreCode(row.store_code),
++      Number(row.price),
++      row.observed_at,
++      row.source ?? ""
++    ].join("|"))
++  );
++
++  const newRows = rows.filter((row) => !existingKeys.has([
++    normalizeStoreCode(row.store_code),
++    Number(row.price),
++    row.observed_at,
++    row.source
++  ].join("|")));
++
++  if (!newRows.length) return { inserted: 0, error: null as string | null };
++
++  const { error } = await supabase.from("price_observations").insert(newRows);
+ 
+   if (error) {
+     return { inserted: 0, error: error.message };
+   }
+ 
+-  return { inserted: rows.length, error: null as string | null };
++  return { inserted: newRows.length, error: null as string | null };
+ }

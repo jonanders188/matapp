@@ -3,7 +3,7 @@ import { apiErrorResponse, requireCurrentHousehold } from "@/lib/current-househo
 import { getSupabaseAdmin } from "@/lib/supabase-server";
 
 type StorePreference = {
-  id?: string;
+  id?: string | null;
   household_id?: string;
   store_key: string;
   store_name: string;
@@ -12,10 +12,18 @@ type StorePreference = {
   updated_at?: string | null;
 };
 
-type PriceStoreRow = {
-  store_code: string | null;
-  store_name: string;
-};
+const STANDARD_STORES: StorePreference[] = [
+  { store_key: "kiwi", store_name: "KIWI", priority: 100, is_enabled: true },
+  { store_key: "rema_1000", store_name: "REMA 1000", priority: 100, is_enabled: true },
+  { store_key: "meny_no", store_name: "Meny", priority: 100, is_enabled: true },
+  { store_key: "coop_no", store_name: "Coop", priority: 100, is_enabled: true },
+  { store_key: "oda_no", store_name: "Oda", priority: 100, is_enabled: true },
+  { store_key: "spar_no", store_name: "SPAR", priority: 100, is_enabled: true },
+  { store_key: "joker_no", store_name: "Joker", priority: 100, is_enabled: true },
+  { store_key: "europris_no", store_name: "Europris", priority: 100, is_enabled: true },
+  { store_key: "bunnpris", store_name: "Bunnpris", priority: 100, is_enabled: true },
+  { store_key: "engrossnett_no", store_name: "Engrosnett", priority: 100, is_enabled: true }
+];
 
 function requireAdminRole(role: string) {
   if (role !== "admin") {
@@ -23,8 +31,8 @@ function requireAdminRole(role: string) {
   }
 }
 
-function storeKey(row: Pick<PriceStoreRow, "store_code" | "store_name">) {
-  return String(row.store_code || row.store_name).trim();
+function normalizeStoreKey(value: unknown) {
+  return String(value ?? "").trim().toLowerCase();
 }
 
 function toPriority(value: unknown) {
@@ -33,96 +41,93 @@ function toPriority(value: unknown) {
   return Math.max(1, Math.min(999, Math.round(parsed)));
 }
 
+function displayStoreName(storeKeyValue: string, fallback: unknown) {
+  const key = normalizeStoreKey(storeKeyValue);
+  const fallbackName = String(fallback ?? storeKeyValue).trim();
+
+  if (key === "kiwi") return "KIWI";
+  if (key === "rema_1000") return "REMA 1000";
+  if (key === "meny_no") return "Meny";
+  if (key === "coop_no") return "Coop";
+  if (key === "oda_no") return "Oda";
+  if (key === "spar_no") return "SPAR";
+  if (key === "joker_no") return "Joker";
+  if (key === "europris_no") return "Europris";
+  if (key === "bunnpris") return "Bunnpris";
+  if (key === "engrossnett_no") return "Engrosnett";
+
+  return fallbackName || storeKeyValue;
+}
+
 async function loadStores(householdId: string) {
   const supabase = getSupabaseAdmin();
 
-  const { data: productsData, error: productsError } = await supabase
-    .from("products")
-    .select("id")
-    .eq("household_id", householdId)
-    .eq("is_basis", true);
-
-  if (productsError) throw productsError;
-
-  const productIds = (productsData ?? []).map((product) => product.id).filter(Boolean);
-
-  const observedStores = new Map<string, PriceStoreRow>();
-
-  if (productIds.length) {
-    const { data: observationsData, error: observationsError } = await supabase
-      .from("price_observations")
-      .select("store_code, store_name")
-      .in("product_id", productIds)
-      .order("store_name", { ascending: true })
-      .limit(5000);
-
-    if (observationsError) throw observationsError;
-
-    for (const row of (observationsData ?? []) as PriceStoreRow[]) {
-      const key = storeKey(row);
-      if (!key) continue;
-      if (!observedStores.has(key)) observedStores.set(key, row);
-    }
-  }
-
-  const { data: preferencesData, error: preferencesError } = await supabase
+  const { data, error } = await supabase
     .from("household_store_preferences")
     .select("id, household_id, store_key, store_name, priority, is_enabled, updated_at")
     .eq("household_id", householdId)
     .order("priority", { ascending: true })
     .order("store_name", { ascending: true });
 
-  if (preferencesError) throw preferencesError;
+  if (error) throw error;
 
-  const preferences = new Map<string, StorePreference>();
-  for (const pref of (preferencesData ?? []) as StorePreference[]) {
-    preferences.set(pref.store_key, pref);
+  const stores = new Map<string, StorePreference>();
+
+  for (const standard of STANDARD_STORES) {
+    const key = normalizeStoreKey(standard.store_key);
+    stores.set(key, {
+      id: null,
+      store_key: key,
+      store_name: displayStoreName(key, standard.store_name),
+      priority: toPriority(standard.priority),
+      is_enabled: standard.is_enabled !== false,
+      updated_at: null
+    });
   }
 
-  const discoveredWithoutPreference: StorePreference[] = [];
-  for (const row of observedStores.values()) {
-    const key = storeKey(row);
-    if (!preferences.has(key)) {
-      discoveredWithoutPreference.push({
-        household_id: householdId,
-        store_key: key,
-        store_name: row.store_name,
-        priority: 100,
-        is_enabled: true
-      });
-    }
+  for (const pref of (data ?? []) as StorePreference[]) {
+    const key = normalizeStoreKey(pref.store_key);
+    if (!key) continue;
+
+    stores.set(key, {
+      id: pref.id ?? null,
+      household_id: pref.household_id,
+      store_key: key,
+      store_name: displayStoreName(key, pref.store_name),
+      priority: toPriority(pref.priority),
+      is_enabled: pref.is_enabled !== false,
+      updated_at: pref.updated_at ?? null
+    });
   }
 
-  if (discoveredWithoutPreference.length) {
-    const { error: upsertError } = await supabase
-      .from("household_store_preferences")
-      .upsert(discoveredWithoutPreference, { onConflict: "household_id,store_key" });
-
-    if (upsertError) throw upsertError;
-
-    const { data: refreshedData, error: refreshedError } = await supabase
-      .from("household_store_preferences")
-      .select("id, household_id, store_key, store_name, priority, is_enabled, updated_at")
-      .eq("household_id", householdId)
-      .order("priority", { ascending: true })
-      .order("store_name", { ascending: true });
-
-    if (refreshedError) throw refreshedError;
-    return refreshedData ?? [];
-  }
-
-  return preferencesData ?? [];
+  return [...stores.values()].sort((a, b) => {
+    const priorityDiff = toPriority(a.priority) - toPriority(b.priority);
+    if (priorityDiff !== 0) return priorityDiff;
+    return a.store_name.localeCompare(b.store_name, "nb");
+  });
 }
 
 export async function GET(request: Request) {
   try {
     const current = await requireCurrentHousehold(request);
     requireAdminRole(current.role);
-    const stores = await loadStores(current.householdId);
 
-    return NextResponse.json({ data: { stores } });
+    console.log("[api/admin/stores] GET isolated read-only");
+
+    return NextResponse.json({
+      data: {
+        stores: STANDARD_STORES.map((store) => ({
+          id: null,
+          store_key: normalizeStoreKey(store.store_key),
+          store_name: store.store_name,
+          priority: store.priority,
+          is_enabled: store.is_enabled,
+          updated_at: null
+        }))
+      }
+    });
   } catch (error) {
-    console.error("[api/admin/stores] GET", error);
+    console.error("[api/admin/stores] GET isolated error", error);
     return apiErrorResponse(error);
   }
 }
@@ -131,6 +136,7 @@ export async function PATCH(request: Request) {
   try {
     const current = await requireCurrentHousehold(request);
     requireAdminRole(current.role);
+
     const body = (await request.json()) as {
       store_key?: unknown;
       store_name?: unknown;
@@ -138,14 +144,15 @@ export async function PATCH(request: Request) {
       is_enabled?: unknown;
     };
 
-    const storeKeyValue = String(body.store_key ?? "").trim();
-    const storeName = String(body.store_name ?? storeKeyValue).trim();
+    const storeKeyValue = normalizeStoreKey(body.store_key);
+    const storeName = displayStoreName(storeKeyValue, body.store_name ?? storeKeyValue);
 
     if (!storeKeyValue) {
       return NextResponse.json({ error: "Butikk mangler" }, { status: 400 });
     }
 
     const supabase = getSupabaseAdmin();
+
     const update = {
       household_id: current.householdId,
       store_key: storeKeyValue,
@@ -155,15 +162,32 @@ export async function PATCH(request: Request) {
       updated_at: new Date().toISOString()
     };
 
-    const { data, error } = await supabase
+    const { data: existingRows, error: existingError } = await supabase
       .from("household_store_preferences")
-      .upsert(update, { onConflict: "household_id,store_key" })
-      .select("id, household_id, store_key, store_name, priority, is_enabled, updated_at")
-      .single();
+      .select("id")
+      .eq("household_id", current.householdId)
+      .ilike("store_key", storeKeyValue);
 
-    if (error) throw error;
+    if (existingError) throw existingError;
 
-    return NextResponse.json({ data });
+    const existing = existingRows?.[0];
+
+    const result = existing?.id
+      ? await supabase
+          .from("household_store_preferences")
+          .update(update)
+          .eq("id", existing.id)
+          .select("id, household_id, store_key, store_name, priority, is_enabled, updated_at")
+          .single()
+      : await supabase
+          .from("household_store_preferences")
+          .insert(update)
+          .select("id, household_id, store_key, store_name, priority, is_enabled, updated_at")
+          .single();
+
+    if (result.error) throw result.error;
+
+    return NextResponse.json({ data: result.data });
   } catch (error) {
     console.error("[api/admin/stores] PATCH", error);
     return apiErrorResponse(error);

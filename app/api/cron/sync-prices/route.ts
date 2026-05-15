@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdminAccess } from "@/lib/admin-guard";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
 import { searchKassalappProducts } from "@/lib/kassalapp";
+import { canonicalStoreName, normalizeStoreCode } from "@/lib/price-observations";
 
 export async function GET(request: Request) {
   const unauthorized = await requireAdminAccess(request);
@@ -27,8 +28,8 @@ export async function GET(request: Request) {
         if (!match.store || match.current_price == null) continue;
         const { error: insertError } = await supabase.from("price_observations").insert({
           product_id: savedProduct.id,
-          store_code: match.store.code,
-          store_name: match.store.name,
+          store_code: normalizeStoreCode(match.store.code || match.store.name),
+          store_name: canonicalStoreName(match.store.code || match.store.name, match.store.name),
           price: match.current_price,
           unit_price: match.current_unit_price ?? null,
           observed_at: match.price_history?.[0]?.date ?? new Date().toISOString(),

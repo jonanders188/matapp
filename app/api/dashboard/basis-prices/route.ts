@@ -90,7 +90,7 @@ function toNumber(value: unknown, fallback = 0) {
 }
 
 function storeKey(observation: Pick<PriceObservationRow, "store_code" | "store_name">) {
-  return String(observation.store_code || observation.store_name).trim();
+  return String(observation.store_code || observation.store_name).trim().toLowerCase();
 }
 
 function observationKey(observation: PriceObservationRow) {
@@ -158,7 +158,10 @@ export async function GET(request: Request) {
 
     const storePreferences = new Map<string, StorePreferenceRow>();
     for (const preference of (storePreferencesData ?? []) as StorePreferenceRow[]) {
-      storePreferences.set(preference.store_key, preference);
+      storePreferences.set(String(preference.store_key).trim().toLowerCase(), {
+        ...preference,
+        store_key: String(preference.store_key).trim().toLowerCase()
+      });
     }
 
     function preferenceFor(observation: Pick<PriceObservationRow, "store_code" | "store_name">) {

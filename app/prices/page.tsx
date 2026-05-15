@@ -163,7 +163,7 @@ export default function PricesPage() {
                   <tr>
                     <th className="p-4">Produkt</th>
                     <th>Basisbehov</th>
-                    {visibleStores.map((store) => <th key={store}>{store}</th>)}
+                    {visibleStores.map((store, index) => <th key={`${store}-${index}`}>{store}</th>)}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line">
@@ -198,14 +198,14 @@ export default function PricesPage() {
                         <span className="font-medium">{product.desiredQuantity}</span>
                         <span className="ml-1 text-xs text-muted">ønsket</span>
                       </td>
-                      {visibleStores.map((store) => {
+                      {visibleStores.map((store, index) => {
                         const price = product.storePrices[store];
                         const freshness = product.storePriceFreshness[store];
                         const ageLabel = priceAgeLabel(product.storePriceAgeDays[store]);
                         const isLowest = freshness === "fresh" && product.lowestStore === store;
 
                         return (
-                          <td key={store} className={isLowest ? "font-bold text-brand" : freshness === "fallback" ? "text-muted" : ""}>
+                          <td key={`${store}-${index}`} className={isLowest ? "font-bold text-brand" : freshness === "fallback" ? "text-muted" : ""}>
                             {price === undefined ? (
                               <span className="text-muted">-</span>
                             ) : (
@@ -246,7 +246,7 @@ export default function PricesPage() {
             <h2 className="font-semibold">Butikkrangering</h2>
             <div className="mt-4 space-y-3 text-sm">
               {data.stores.slice(0, 6).map((store, index) => (
-                <div key={store.store} className="flex items-start justify-between gap-4 rounded-xl bg-slate-50 p-3">
+                <div key={`${store.store}-${index}`} className="flex items-start justify-between gap-4 rounded-xl bg-slate-50 p-3">
                   <div>
                     <p className="font-semibold">{index + 1}. {store.store}</p>
                     <p className="text-muted">{store.coveragePct}% dekning · mangler {store.missingProducts}</p>

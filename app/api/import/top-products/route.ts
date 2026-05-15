@@ -3,6 +3,7 @@ import { requireAdminAccess } from "@/lib/admin-guard";
 import { TOP_50_PRODUCTS, type TopProductSeed } from "@/lib/top-products";
 import { normalizeCategory, packageSize, productMetadataPayload, searchKassalappProducts, type KassalappProduct } from "@/lib/kassalapp";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
+import { canonicalStoreName, normalizeStoreCode } from "@/lib/price-observations";
 
 type ImportBody = {
   dryRun?: boolean;
@@ -155,8 +156,8 @@ async function insertPriceObservations(productId: string, matches: KassalappProd
     .filter((match) => match.store && match.current_price != null)
     .map((match) => ({
       product_id: productId,
-      store_code: match.store!.code,
-      store_name: match.store!.name,
+      store_code: normalizeStoreCode(match.store!.code || match.store!.name),
+      store_name: canonicalStoreName(match.store!.code || match.store!.name, match.store!.name),
       price: match.current_price!,
       unit_price: match.current_unit_price ?? null,
       observed_at: match.price_history?.[0]?.date ?? new Date().toISOString(),

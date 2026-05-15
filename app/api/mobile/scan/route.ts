@@ -93,7 +93,7 @@ function normalizeStoreCode(value: string) {
 }
 
 async function canonicalReceiptStore(householdId: string, receipt?: ReceiptMatchInput) {
-  const requestedKey = String(receipt?.storeKey ?? "").trim();
+  const requestedKey = String(receipt?.storeKey ?? "").trim().toLowerCase();
   const requestedName = String(receipt?.storeName ?? "").trim();
   const supabase = getSupabaseAdmin();
 
@@ -107,7 +107,7 @@ async function canonicalReceiptStore(householdId: string, receipt?: ReceiptMatch
   const stores = data ?? [];
 
   if (requestedKey) {
-    const keyMatch = stores.find((store) => String(store.store_key ?? "") === requestedKey);
+    const keyMatch = stores.find((store) => String(store.store_key ?? "").trim().toLowerCase() === requestedKey);
     if (keyMatch?.store_key && keyMatch?.store_name) {
       return { storeKey: keyMatch.store_key, storeName: keyMatch.store_name };
     }

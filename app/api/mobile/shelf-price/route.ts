@@ -50,13 +50,18 @@ function productPayload(product: KassalappProduct, householdId: string, ean: str
   };
 }
 
+function normalizeStoreKey(value: unknown) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
 async function getSavedStore(householdId: string, storeKey: string) {
+  const normalizedStoreKey = normalizeStoreKey(storeKey);
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("household_store_preferences")
     .select("store_key, store_name, is_enabled, priority")
     .eq("household_id", householdId)
-    .eq("store_key", storeKey)
+    .eq("store_key", normalizedStoreKey)
     .maybeSingle();
 
   if (error) throw error;
@@ -113,7 +118,7 @@ export async function POST(request: Request) {
     const body = (await request.json()) as ShelfPriceRequest;
     const ean = cleanEan(body.ean);
     const price = toPrice(body.price);
-    const storeKey = String(body.storeKey ?? "").trim();
+    const storeKey = normalizeStoreKey(body.storeKey);
 
     if (ean.length < 6) {
       return NextResponse.json({ error: "Ugyldig EAN fra hyllekant" }, { status: 400 });
