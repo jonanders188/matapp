@@ -428,6 +428,9 @@ export default function MobileScanPage() {
   const receiptConfirmedRef = useRef(false);
   const lastReceiptAnalysisAtRef = useRef(0);
   const lastScanRef = useRef<{ ean: string; at: number }>({ ean: "", at: 0 });
+  const shelfAutoCaptureRef = useRef(false);
+  const lastShelfAutoSaveRef = useRef<{ ean: string; at: number }>({ ean: "", at: 0 });
+  const cameraStartIdRef = useRef(0);
 
   const [mode, setMode] = useState<MobileMode>("in");
   const [cameraReady, setCameraReady] = useState(false);
@@ -590,7 +593,72 @@ export default function MobileScanPage() {
     setShelfStoreKey(store.storeKey);
   }
 
-  async function runShelfOcr(source: string | File) {
+  function shelfInfoLooksSafe(ean: string, price: number | null, text: string) {
+    if (!selectedShelfStore) return false;
+    if (cleanEan(ean).length < 6) return false;
+    if (price === null || price <= 0 || price > 5000) return false;
+    if (text.trim().length < 4) return false;
+    return true;
+  }
+
+  async function saveShelfPriceValues(eanValue: string, priceValue: number, rawText: string, auto = false) {
+    const ean = cleanEan(eanValue);
+
+    if (!selectedShelfStore) {
+      setError("Velg hvilken lagret butikk du står i før du lagrer hyllekantprisen.");
+      return false;
+    }
+
+    if (ean.length < 6) {
+      setError("Skriv eller skann EAN fra hyllekanten før du lagrer.");
+      return false;
+    }
+
+    if (!Number.isFinite(priceValue) || priceValue <= 0) {
+      setError("Skriv en gyldig pris fra hyllekanten før du lagrer.");
+      return false;
+    }
+
+    setBusy(true);
+    setError(null);
+    setMessage(auto ? "EAN og pris funnet. Lagrer hyllekantpris automatisk..." : "Lagrer hyllekantpris...");
+
+    try {
+      const response = await authFetch("/api/mobile/shelf-price", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ean,
+          price: priceValue,
+          storeKey: selectedShelfStore.storeKey,
+          storeName: selectedShelfStore.storeName,
+          rawText
+        })
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        beep(false);
+        setError(payload?.error ?? "Kunne ikke lagre hyllekantpris");
+        return false;
+      }
+
+      beep(true);
+      setShelfEan("");
+      setShelfPrice("");
+      setShelfText("");
+      setMessage(`${auto ? "Auto-lagret" : "Hyllekantpris lagret"} for ${payload?.data?.product?.name ?? ean}: ${priceValue.toFixed(2)} kr hos ${payload?.data?.storeName ?? selectedShelfStore.storeName}.`);
+      return true;
+    } catch (saveError) {
+      beep(false);
+      setError(saveError instanceof Error ? saveError.message : "Kunne ikke lagre hyllekantpris");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runShelfOcr(source: string | File, options?: { fallbackEan?: string; autoSaveWhenOk?: boolean }) {
     setReceiptProcessing(true);
     setError(null);
     setOcrStatus("Leser hyllekant...");
@@ -610,11 +678,20 @@ export default function MobileScanPage() {
       const text = result.data.text.trim();
       const price = parseShelfPrice(text);
       const eanFromText = parseShelfEan(text);
+      const finalEan = cleanEan(eanFromText || options?.fallbackEan || shelfEan);
+
       setShelfText(text);
       if (price !== null) setShelfPrice(price.toFixed(2));
-      if (eanFromText && !shelfEan) setShelfEan(eanFromText);
+      if (finalEan) setShelfEan(finalEan);
+
+      if (options?.autoSaveWhenOk && shelfInfoLooksSafe(finalEan, price, text)) {
+        setOcrStatus("EAN og pris ser ok ut. Lagrer automatisk...");
+        await saveShelfPriceValues(finalEan, price as number, text, true);
+        return;
+      }
+
       setOcrStatus(price !== null ? "Hyllekant lest. Kontroller EAN og pris før lagring." : "Fant tekst, men ingen sikker pris. Skriv pris manuelt.");
-      beep(price !== null || Boolean(eanFromText));
+      beep(price !== null || Boolean(finalEan));
     } catch (ocrError) {
       beep(false);
       setError(ocrError instanceof Error ? ocrError.message : "Kunne ikke lese hyllekanten automatisk");
@@ -647,57 +724,11 @@ export default function MobileScanPage() {
   async function saveShelfPrice() {
     const ean = cleanEan(shelfEan);
     const price = parsePrice(shelfPrice);
-
-    if (!selectedShelfStore) {
-      setError("Velg hvilken lagret butikk du står i før du lagrer hyllekantprisen.");
-      return;
-    }
-
-    if (ean.length < 6) {
-      setError("Skriv eller skann EAN fra hyllekanten før du lagrer.");
-      return;
-    }
-
-    if (price === null || price <= 0) {
+    if (price === null) {
       setError("Skriv en gyldig pris fra hyllekanten før du lagrer.");
       return;
     }
-
-    setBusy(true);
-    setError(null);
-    setMessage("Lagrer hyllekantpris...");
-
-    try {
-      const response = await authFetch("/api/mobile/shelf-price", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ean,
-          price,
-          storeKey: selectedShelfStore.storeKey,
-          storeName: selectedShelfStore.storeName,
-          rawText: shelfText
-        })
-      });
-
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) {
-        beep(false);
-        setError(payload?.error ?? "Kunne ikke lagre hyllekantpris");
-        return;
-      }
-
-      beep(true);
-      setShelfEan("");
-      setShelfPrice("");
-      setShelfText("");
-      setMessage(`Hyllekantpris lagret for ${payload?.data?.product?.name ?? ean}: ${price.toFixed(2)} kr hos ${payload?.data?.storeName ?? selectedShelfStore.storeName}.`);
-    } catch (saveError) {
-      beep(false);
-      setError(saveError instanceof Error ? saveError.message : "Kunne ikke lagre hyllekantpris");
-    } finally {
-      setBusy(false);
-    }
+    await saveShelfPriceValues(ean, price, shelfText, false);
   }
 
   async function submitScan(rawEan: string, selectedMode: ScanMode = mode === "out" ? "out" : "in") {
@@ -759,6 +790,9 @@ export default function MobileScanPage() {
   }
 
   async function startCamera() {
+    const startId = cameraStartIdRef.current + 1;
+    cameraStartIdRef.current = startId;
+    setCameraReady(false);
     setCameraError(null);
 
     try {
@@ -767,6 +801,9 @@ export default function MobileScanPage() {
           formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128"]
         });
       }
+
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
 
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -777,19 +814,37 @@ export default function MobileScanPage() {
         audio: false
       });
 
-      streamRef.current = stream;
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+      if (cameraStartIdRef.current !== startId) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
       }
 
+      streamRef.current = stream;
+
+      const video = videoRef.current;
+      if (video) {
+        video.srcObject = stream;
+        try {
+          await video.play();
+        } catch (playError) {
+          const errorName = playError instanceof DOMException ? playError.name : "";
+          if (errorName !== "AbortError" && errorName !== "NotAllowedError") {
+            throw playError;
+          }
+        }
+      }
+
+      if (cameraStartIdRef.current !== startId) return;
       setCameraReady(true);
 
       if (!window.BarcodeDetector) {
         setCameraError("Denne nettleseren støtter ikke strekkodeskanning direkte. Kvitteringsmodus virker fortsatt, og EAN kan legges inn manuelt.");
       }
     } catch (cameraErrorValue) {
+      if (cameraStartIdRef.current !== startId) return;
+      const errorName = cameraErrorValue instanceof DOMException ? cameraErrorValue.name : "";
+      if (errorName === "AbortError") return;
+      setCameraReady(false);
       setCameraError(cameraErrorValue instanceof Error ? cameraErrorValue.message : "Fikk ikke startet kameraet");
     }
   }
@@ -813,6 +868,30 @@ export default function MobileScanPage() {
     receiptConfirmedRef.current = false;
     setReceiptDetected(false);
     setReceiptCandidateScore(0);
+    setError(null);
+    setOcrStatus(null);
+
+    if (mode !== "shelf") {
+      setShelfEan("");
+      setShelfPrice("");
+      setShelfText("");
+      setShelfImageUrl(null);
+    }
+
+    if (mode !== "receipt") {
+      setReceiptText("");
+      setReceiptStoreVerified(false);
+      setStoreDetectionMessage(null);
+      setReceiptImageUrl(null);
+    }
+
+    if (mode === "in" || mode === "out") {
+      setMessage("Pek kameraet mot strekkoden.");
+    } else if (mode === "receipt") {
+      setMessage("Pek kameraet mot kvitteringen, eller last opp bilde.");
+    } else {
+      setMessage("Velg butikk, pek kameraet mot hyllekanten og la appen lagre automatisk når EAN og pris finnes.");
+    }
   }, [mode]);
 
   useEffect(() => {
@@ -847,15 +926,33 @@ export default function MobileScanPage() {
         }
       }
 
-      if (mode === "shelf" && selectedShelfStore && !busy && cameraReady && video && detector && video.readyState >= 2 && !scanningRef.current) {
+      if (mode === "shelf" && selectedShelfStore && !busy && !receiptProcessing && cameraReady && video && detector && video.readyState >= 2 && !scanningRef.current) {
         scanningRef.current = true;
         try {
           const codes = await detector.detect(video);
           const ean = cleanEan(codes[0]?.rawValue ?? "");
-          if (ean && ean !== shelfEan) setShelfEan(ean);
+          if (ean) {
+            if (ean !== shelfEan) setShelfEan(ean);
+            const now = Date.now();
+            const last = lastShelfAutoSaveRef.current;
+            const canAutoCapture = !shelfAutoCaptureRef.current && (last.ean !== ean || now - last.at > 10000);
+
+            if (canAutoCapture) {
+              const dataUrl = captureVideoFrame(video);
+              if (dataUrl) {
+                shelfAutoCaptureRef.current = true;
+                lastShelfAutoSaveRef.current = { ean, at: now };
+                if (shelfImageUrl) URL.revokeObjectURL(shelfImageUrl);
+                setShelfImageUrl(dataUrl);
+                setMessage(`Fant EAN ${ean}. Leser hyllekant automatisk...`);
+                await runShelfOcr(dataUrl, { fallbackEan: ean, autoSaveWhenOk: true });
+              }
+            }
+          }
         } catch {
           // Ignore shelf barcode detection errors.
         } finally {
+          shelfAutoCaptureRef.current = false;
           scanningRef.current = false;
         }
       }
@@ -881,13 +978,21 @@ export default function MobileScanPage() {
     return () => {
       cancelled = true;
     };
-  }, [busy, cameraReady, mode, receiptCache, selectedShelfStore, shelfEan]);
+  }, [busy, cameraReady, mode, receiptCache, receiptProcessing, selectedShelfStore, shelfEan, shelfImageUrl]);
 
   useEffect(() => {
     startCamera().catch(() => undefined);
 
     return () => {
+      cameraStartIdRef.current += 1;
+      setCameraReady(false);
+      const video = videoRef.current;
+      if (video) {
+        video.pause();
+        video.srcObject = null;
+      }
       streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
       if (receiptImageUrl) URL.revokeObjectURL(receiptImageUrl);
       if (shelfImageUrl) URL.revokeObjectURL(shelfImageUrl);
     };
@@ -966,7 +1071,7 @@ export default function MobileScanPage() {
             <div className="pointer-events-none absolute inset-0 px-6 py-8">
               <div className="mx-auto flex h-full max-w-[82%] flex-col items-center justify-center rounded-3xl border-4 border-violet-300 bg-violet-300/15 text-center shadow-[0_0_0_999px_rgba(2,6,23,0.40)]">
                 <p className="text-2xl font-black">Hyllekant</p>
-                <p className="mt-2 max-w-48 text-sm text-slate-100">Hold prisetiketten innenfor rammen. Skann barcode/EAN hvis den finnes, og les pris med OCR.</p>
+                <p className="mt-2 max-w-48 text-sm text-slate-100">Hold prisetiketten innenfor rammen. Når EAN/barcode finnes tar appen bilde, leser pris og lagrer automatisk hvis alt ser ok ut.</p>
                 {shelfEan ? <p className="mt-3 rounded-full bg-slate-950/70 px-3 py-1 text-xs font-bold">EAN: {shelfEan}</p> : null}
               </div>
             </div>
@@ -1051,7 +1156,7 @@ export default function MobileScanPage() {
           </div>
         ) : null}
 
-        {receiptCache ? (
+        {receiptCache && mode !== "shelf" ? (
           <section className="mt-4 rounded-3xl bg-sky-300 p-4 text-slate-950 shadow-2xl">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -1177,8 +1282,8 @@ export default function MobileScanPage() {
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Les hyllekant</p>
             <h2 className="mt-1 text-2xl font-black">Hyllepris</h2>
             <p className="mt-2 text-sm text-slate-600">
-              Velg butikken du står i. Appen prøver å lese pris fra hyllekanten og fange EAN/barcode hvis den er synlig.
-              Kontroller alltid EAN og pris før lagring.
+              Velg butikken du står i. Når kameraet finner EAN/barcode tar appen bilde, leser pris og lagrer automatisk hvis EAN og pris ser ok ut.
+              Feltene under brukes bare hvis automatikk ikke treffer.
             </p>
 
             <div className="mt-4 grid gap-3">
@@ -1261,7 +1366,7 @@ export default function MobileScanPage() {
           <p className="mt-1 text-xl font-black">{message}</p>
           {error ? <p className="mt-2 rounded-2xl bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p> : null}
 
-          {lastResult ? (
+          {lastResult && mode !== "receipt" && mode !== "shelf" ? (
             <div className="mt-4 flex gap-3 rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
               {lastResult.product.image_url ? (
                 <img src={lastResult.product.image_url} alt="" className="h-20 w-20 rounded-2xl bg-white object-contain" />
@@ -1291,25 +1396,27 @@ export default function MobileScanPage() {
           ) : null}
         </section>
 
-        <section className="mt-4 rounded-3xl bg-white/8 p-4 ring-1 ring-white/10">
-          <label className="text-sm font-semibold text-slate-200">Manuell EAN hvis kamera ikke virker</label>
-          <div className="mt-2 flex gap-2">
-            <input
-              inputMode="numeric"
-              value={manualEan}
-              onChange={(event) => setManualEan(event.target.value)}
-              placeholder="Skriv/skann EAN"
-              className="min-w-0 flex-1 rounded-2xl border-0 bg-white px-4 py-3 text-lg font-semibold text-slate-950 outline-none"
-            />
-            <button
-              onClick={() => submitScan(manualEan)}
-              disabled={busy || cleanEan(manualEan).length < 6}
-              className="rounded-2xl bg-emerald-400 px-5 py-3 font-black text-slate-950 disabled:opacity-50"
-            >
-              Piip
-            </button>
-          </div>
-        </section>
+        {mode !== "receipt" && mode !== "shelf" ? (
+          <section className="mt-4 rounded-3xl bg-white/8 p-4 ring-1 ring-white/10">
+            <label className="text-sm font-semibold text-slate-200">Manuell EAN hvis kamera ikke virker</label>
+            <div className="mt-2 flex gap-2">
+              <input
+                inputMode="numeric"
+                value={manualEan}
+                onChange={(event) => setManualEan(event.target.value)}
+                placeholder="Skriv/skann EAN"
+                className="min-w-0 flex-1 rounded-2xl border-0 bg-white px-4 py-3 text-lg font-semibold text-slate-950 outline-none"
+              />
+              <button
+                onClick={() => submitScan(manualEan)}
+                disabled={busy || cleanEan(manualEan).length < 6}
+                className="rounded-2xl bg-emerald-400 px-5 py-3 font-black text-slate-950 disabled:opacity-50"
+              >
+                Piip
+              </button>
+            </div>
+          </section>
+        ) : null}
       </div>
     </main>
   );
