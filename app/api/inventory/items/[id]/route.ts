@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ensureDefaultHousehold } from "@/lib/db";
+import { apiErrorResponse, requireCurrentHousehold } from "@/lib/current-household";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
 
 type ApiErrorLike = {
@@ -42,13 +42,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const { id } = await params;
     const body = (await request.json().catch(() => ({}))) as Body;
     const supabase = getSupabaseAdmin();
-    const household = await ensureDefaultHousehold();
+    const current = await requireCurrentHousehold(request);
 
     const existing = await supabase
       .from("inventory_items")
-      .select("id, household_id, quantity, desired_quantity, location, expires_at")
+      .select("id, household_id, product_id, quantity, desired_quantity, location, expires_at")
       .eq("id", id)
-      .eq("household_id", household.id)
+      .eq("household_id", current.householdId)
       .limit(1);
 
     if (existing.error) throw existing.error;
@@ -96,15 +96,34 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       .from("inventory_items")
       .update(update)
       .eq("id", id)
-      .eq("household_id", household.id)
-      .select("id, quantity, desired_quantity, location, expires_at, updated_at")
-      .limit(1);
+      .eq("household_id", current.householdId)
+      .select("id, product_id, quantity, desired_quantity, location, expires_at, updated_at")
+      .single();
 
     if (updated.error) throw updated.error;
 
-    return NextResponse.json({ data: updated.data?.[0] ?? null });
+    if ("desired_quantity" in update && item.product_id) {
+      const desired = toNumber(update.desired_quantity, currentDesired);
+
+      const householdProductUpdate = await supabase
+        .from("household_products")
+        .update({ desired_stock: desired, updated_at: new Date().toISOString() })
+        .eq("household_id", current.householdId)
+        .eq("product_id", item.product_id);
+
+      if (householdProductUpdate.error) throw householdProductUpdate.error;
+
+      const productUpdate = await supabase
+        .from("products")
+        .update({ desired_stock: desired })
+        .eq("id", item.product_id);
+
+      if (productUpdate.error) throw productUpdate.error;
+    }
+
+    return NextResponse.json({ data: updated.data ?? null });
   } catch (error) {
     console.error("[api/inventory/items/:id] PATCH", errorPayload(error, "Ukjent feil"));
-    return NextResponse.json(errorPayload(error, "Kunne ikke oppdatere lager"), { status: 500 });
+    return apiErrorResponse(error);
   }
 }
