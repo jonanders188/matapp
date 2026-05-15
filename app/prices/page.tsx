@@ -261,7 +261,7 @@ export default function PricesPage() {
 
           <section className="card p-5">
             <h2 className="font-semibold">Butikkrangering</h2>
-            <p className="section-subtitle">Billigst øverst. Hver butikk sammenlignes parvis mot andre butikker. Hvert butikkpar bruker alle felles varer med gyldig 14-dagers pris, men bare hvis paret har minst 3 felles produkter.</p>
+            <p className="section-subtitle">Billigst øverst. Hver butikk sammenlignes produkt-for-produkt mot andre butikker. Hvert butikkpar bruker alle felles varer med gyldig 14-dagers pris, men bare hvis paret har minst 3 felles produkter. Indeksen er geometrisk snitt av prisforholdene.</p>
             <div className="mt-4 space-y-3 text-sm">
               {data.stores.slice(0, 8).map((store, index) => (
                 <div key={store.storeKey} className="rounded-xl bg-slate-50 p-3">
@@ -278,7 +278,7 @@ export default function PricesPage() {
                       {store.priceIndex ? (
                         <p className={store.averagePairwiseAdvantagePct >= 0 ? "text-xs text-brand" : "text-xs text-muted"}>
                           {store.averagePairwiseAdvantagePct >= 0 ? "-" : "+"}
-                          {Math.abs(store.averagePairwiseAdvantagePct).toFixed(1)}% mot parvis snitt
+                          {Math.abs(store.averagePairwiseAdvantagePct).toFixed(1)}% mot produktindeks
                         </p>
                       ) : null}
                     </div>

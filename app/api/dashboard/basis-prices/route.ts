@@ -506,39 +506,45 @@ export async function GET(request: Request) {
         const b = storeStats.get(bKey);
         if (!a || !b) continue;
 
-        let aTotal = 0;
-        let bTotal = 0;
-        let sharedProducts = 0;
+        const aProductRatios: number[] = [];
+        const bProductRatios: number[] = [];
 
         for (const product of productComparisons) {
           const aPrice = product.freshStorePrices[aKey];
           const bPrice = product.freshStorePrices[bKey];
           if (aPrice === undefined || bPrice === undefined) continue;
+          if (aPrice <= 0 || bPrice <= 0) continue;
 
-          const quantityWeight = Math.max(1, product.desiredQuantity);
-          aTotal += aPrice * quantityWeight;
-          bTotal += bPrice * quantityWeight;
-          sharedProducts += 1;
+          // Jevons-style price index: compare product-by-product, then use the
+          // geometric mean of price relatives. This keeps one expensive product
+          // from dominating a store-pair comparison.
+          aProductRatios.push(aPrice / bPrice);
+          bProductRatios.push(bPrice / aPrice);
         }
 
-        if (sharedProducts < MIN_PAIRWISE_SHARED_PRODUCTS || aTotal <= 0 || bTotal <= 0) continue;
+        const sharedProducts = aProductRatios.length;
+        if (sharedProducts < MIN_PAIRWISE_SHARED_PRODUCTS) continue;
 
         a.comparableStoreCount += 1;
         b.comparableStoreCount += 1;
         a.comparableProductPairs += sharedProducts;
         b.comparableProductPairs += sharedProducts;
 
-        const ratioA = aTotal / bTotal;
-        const ratioB = bTotal / aTotal;
-        pairwiseRatios.set(aKey, [...(pairwiseRatios.get(aKey) ?? []), ratioA]);
-        pairwiseRatios.set(bKey, [...(pairwiseRatios.get(bKey) ?? []), ratioB]);
+        const ratioA = geometricPriceIndex(aProductRatios);
+        const ratioB = geometricPriceIndex(bProductRatios);
+        if (ratioA === null || ratioB === null) continue;
 
-        if (Math.abs(ratioA - 1) < 0.001) {
+        pairwiseRatios.set(aKey, [...(pairwiseRatios.get(aKey) ?? []), ...aProductRatios]);
+        pairwiseRatios.set(bKey, [...(pairwiseRatios.get(bKey) ?? []), ...bProductRatios]);
+
+        const ratioAAsRelative = ratioA / 100;
+
+        if (Math.abs(ratioAAsRelative - 1) < 0.001) {
           a.pairwiseTies += 1;
           b.pairwiseTies += 1;
           a.pairwiseScore += 0.5;
           b.pairwiseScore += 0.5;
-        } else if (ratioA < 1) {
+        } else if (ratioAAsRelative < 1) {
           a.pairwiseWins += 1;
           b.pairwiseLosses += 1;
           a.pairwiseScore += 1;
