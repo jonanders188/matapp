@@ -102,13 +102,13 @@ export default function ShoppingListPage() {
 
   return (
     <AppShell active="Handleplan">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-4xl font-bold">Smart handleliste</h1>
-          <p className="mt-2 text-muted">Generer en praktisk handleliste basert på anbefalinger, lager og beste pris.</p>
+          <h1 className="page-heading">Smart handleliste</h1>
+          <p className="page-subtitle">Generer en praktisk handleliste basert på anbefalinger, lager og beste pris.</p>
         </div>
         <div className="flex items-center gap-3">
-          <label className="text-sm text-muted">Maks butikker</label>
+          <label className="text-sm leading-6 text-muted">Maks butikker</label>
           <select value={maxStores} onChange={(event) => setMaxStores(Number(event.target.value))} className="rounded-xl border border-line bg-white px-3 py-2 text-sm">
             {[1, 2, 3, 4].map((value) => <option key={value} value={value}>{value}</option>)}
           </select>
@@ -121,19 +121,19 @@ export default function ShoppingListPage() {
 
       {error ? <div className="mt-6 rounded-2xl bg-rose-50 p-4 text-rose-700">{error}</div> : null}
 
-      <div className="mt-8 grid grid-cols-4 gap-5">
+      <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 xl:gap-5">
         <StatCard title="Estimert total" value={kr(data.list?.estimated_total)} subtitle="Planlagte varer" />
         <StatCard title="Mulig sparing" value={kr(data.list?.estimated_saving)} subtitle="Basert på målpris" tone="blue" />
         <StatCard title="Butikker" value={String(storeCount)} subtitle={`Maks ${data.list?.max_stores ?? maxStores} stopp`} tone="amber" />
         <StatCard title="Varer" value={String(totalItems)} subtitle={`Utelatt: ${skippedItems.length}`} tone="purple" />
       </div>
 
-      <div className="mt-8 grid grid-cols-[1fr_360px] gap-6">
+      <div className="mt-8 grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <section className="card overflow-hidden">
           <div className="flex items-center justify-between border-b border-line p-5">
             <div>
-              <h2 className="text-lg font-semibold">Handleliste per butikk</h2>
-              <p className="text-sm text-muted">Sist generert: {shortDate(data.list?.created_at)}</p>
+              <h2 className="section-title">Handleliste per butikk</h2>
+              <p className="text-sm leading-6 text-muted">Sist generert: {shortDate(data.list?.created_at)}</p>
             </div>
           </div>
 
@@ -157,7 +157,7 @@ export default function ShoppingListPage() {
                   <div className="mb-4 flex items-center justify-between">
                     <div>
                       <h3 className="text-xl font-bold text-brand">{store}</h3>
-                      <p className="text-sm text-muted">{items.length} varer</p>
+                      <p className="text-sm leading-6 text-muted">{items.length} varer</p>
                     </div>
                     <p className="text-lg font-bold">{kr(subtotal)}</p>
                   </div>
@@ -165,7 +165,7 @@ export default function ShoppingListPage() {
                   <div className="space-y-3">
                     {items.map((item) => (
                       <article key={item.id} className="rounded-2xl border border-line bg-white p-4">
-                        <div className="flex items-start justify-between gap-4">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                           <div className="flex min-w-0 gap-3">
                             <div className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-xl bg-slate-50">
                               {item.product_image_url ? (
@@ -185,12 +185,12 @@ export default function ShoppingListPage() {
                               ) : (
                                 <p className="font-semibold">{item.product_name}</p>
                               )}
-                              <p className="mt-1 text-sm text-muted">{item.reason}</p>
+                              <p className="section-subtitle">{item.reason}</p>
                             </div>
                           </div>
                           <div className="shrink-0 text-right">
                             <p className="font-bold">{kr(item.estimated_price)}</p>
-                            <p className="text-sm text-muted">Antall: {item.quantity}</p>
+                            <p className="text-sm leading-6 text-muted">Antall: {item.quantity}</p>
                           </div>
                         </div>
                       </article>
@@ -205,7 +205,7 @@ export default function ShoppingListPage() {
         <aside className="space-y-5">
           <section className="card p-5">
             <h2 className="font-semibold">Ikke verdt egen tur</h2>
-            <p className="mt-1 text-sm text-muted">Varer utenfor maks antall butikker flyttes hit.</p>
+            <p className="section-subtitle">Varer utenfor maks antall butikker flyttes hit.</p>
             <div className="mt-4 space-y-3">
               {skippedItems.slice(0, 8).map((item) => (
                 <div key={item.id} className="flex items-center gap-3 rounded-xl bg-slate-50 p-3">
@@ -227,11 +227,11 @@ export default function ShoppingListPage() {
                     ) : (
                       <p className="font-medium">{item.product_name}</p>
                     )}
-                    <p className="text-sm text-muted">{item.store_name ?? "Ukjent butikk"} · {kr(item.estimated_price)}</p>
+                    <p className="text-sm leading-6 text-muted">{item.store_name ?? "Ukjent butikk"} · {kr(item.estimated_price)}</p>
                   </div>
                 </div>
               ))}
-              {!skippedItems.length ? <p className="text-sm text-muted">Ingen varer utelatt.</p> : null}
+              {!skippedItems.length ? <p className="text-sm leading-6 text-muted">Ingen varer utelatt.</p> : null}
             </div>
           </section>
 

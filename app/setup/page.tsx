@@ -137,13 +137,13 @@ export default function SetupPage() {
 
   return (
     <AppShell active="Oppsett">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-4xl font-bold">Oppsett og oppstart</h1>
-          <p className="mt-2 text-muted">Kjør hele MVP-flyten i riktig rekkefølge og sjekk at alt er klart.</p>
+          <h1 className="page-heading">Oppsett og oppstart</h1>
+          <p className="page-subtitle">Kjør hele MVP-flyten i riktig rekkefølge og sjekk at alt er klart.</p>
           <p className="mt-2 text-sm text-muted">I produksjon må tunge steg ha ADMIN_API_SECRET eller CRON_SECRET.</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row">
           <a href="/products" className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700">Produkter</a>
           <a href="/recommendations" className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700">Anbefalinger</a>
           <a href="/shopping-list" className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700">Handleliste</a>
@@ -160,29 +160,29 @@ export default function SetupPage() {
         </div>
       </div>
 
-      <div className="mt-8 grid grid-cols-4 gap-5">
+      <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 xl:gap-5">
         <StatCard title="Steg fullført" value={`${stats.ok}/${stats.total}`} subtitle="Oppstartsflyt" />
         <StatCard title="Feil" value={String(stats.error)} subtitle="Må rettes før deploy" tone={stats.error ? "red" : "green"} />
         <StatCard title="Kjører nå" value={String(stats.running)} subtitle="Aktive jobber" tone="blue" />
         <StatCard title="Husholdning" value={statusPayload?.household?.name ?? "-"} subtitle="Standard household" tone="amber" />
       </div>
 
-      <div className="mt-8 grid grid-cols-[1fr_380px] gap-6">
+      <div className="mt-8 grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
         <section className="card overflow-hidden">
           <div className="border-b border-line p-5">
-            <h2 className="text-lg font-semibold">Oppstartssteg</h2>
-            <p className="text-sm text-muted">Kjør ett og ett steg ved feilsøking, eller alt samlet når oppsettet er stabilt.</p>
+            <h2 className="section-title">Oppstartssteg</h2>
+            <p className="text-sm leading-6 text-muted">Kjør ett og ett steg ved feilsøking, eller alt samlet når oppsettet er stabilt.</p>
           </div>
           <div className="divide-y divide-line">
             {steps.map((step, index) => {
               const result = results[step.key] ?? { state: "idle" as StepState };
               return (
                 <article key={step.key} className="p-5">
-                  <div className="flex items-start justify-between gap-4">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <div className="flex items-center gap-3">
                         <span className="grid h-8 w-8 place-items-center rounded-full bg-brand-soft text-sm font-bold text-brand">{index + 1}</span>
-                        <h3 className="text-lg font-semibold">{step.title}</h3>
+                        <h3 className="section-title">{step.title}</h3>
                         <span className={`rounded-full px-3 py-1 text-xs font-semibold ${stateClass(result.state)}`}>{stateLabel(result.state)}</span>
                       </div>
                       <p className="mt-2 text-sm text-muted">{step.description}</p>
@@ -217,7 +217,7 @@ export default function SetupPage() {
                   <span className="font-medium">{table.table}</span>
                   <span className={table.ok ? "text-brand" : "text-rose-700"}>{table.ok ? `${table.count} rader` : table.error}</span>
                 </div>
-              )) ?? <p className="text-sm text-muted">Kjør statussjekk for å se tabeller.</p>}
+              )) ?? <p className="text-sm leading-6 text-muted">Kjør statussjekk for å se tabeller.</p>}
             </div>
           </section>
 

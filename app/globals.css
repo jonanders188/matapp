@@ -22,3 +22,46 @@ body {
 .pill {
   @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium;
 }
+
+
+@layer components {
+  .page-heading {
+    @apply text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl;
+  }
+
+  .page-subtitle {
+    @apply mt-2 max-w-3xl text-sm leading-6 text-muted sm:text-base;
+  }
+
+  .section-title {
+    @apply text-lg font-semibold text-slate-950;
+  }
+
+  .section-subtitle {
+    @apply mt-1 text-sm leading-6 text-muted;
+  }
+
+  .btn {
+    @apply inline-flex min-h-10 items-center justify-center rounded-xl border border-line bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .btn-primary {
+    @apply inline-flex min-h-10 items-center justify-center rounded-xl border border-brand bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .field-input {
+    @apply w-full rounded-xl border border-line bg-white px-4 py-3 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/10 disabled:bg-slate-50 disabled:opacity-60;
+  }
+
+  .notice-success {
+    @apply rounded-xl bg-emerald-50 p-3 text-sm leading-6 text-brand;
+  }
+
+  .notice-error {
+    @apply rounded-xl bg-rose-50 p-3 text-sm leading-6 text-rose-700;
+  }
+
+  .table-scroll {
+    @apply -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0;
+  }
+}

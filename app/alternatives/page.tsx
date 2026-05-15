@@ -131,12 +131,12 @@ export default function AlternativesPage() {
 
   return (
     <AppShell active="Alternativer">
-      <div className="flex items-start justify-between gap-6">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Alternativer og billigmerker</h1>
-          <p className="mt-1 text-muted">Finn First Price, Eldorado og andre rimeligere alternativer til varene dere allerede kjøper.</p>
+          <h1 className="page-heading">Alternativer og billigmerker</h1>
+          <p className="page-subtitle">Finn First Price, Eldorado og andre rimeligere alternativer til varene dere allerede kjøper.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button onClick={load} className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700">Oppdater</button>
           <button onClick={generate} disabled={generating} className="rounded-xl bg-brand px-5 py-2 text-sm font-semibold text-white disabled:opacity-60">
             {generating ? "Genererer..." : "Finn alternativer"}
@@ -144,20 +144,20 @@ export default function AlternativesPage() {
         </div>
       </div>
 
-      <div className="mt-6 grid grid-cols-4 gap-5">
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 xl:gap-5">
         <StatCard title="Kandidater" value={String(stats.candidates)} subtitle="Må vurderes" tone="amber" />
         <StatCard title="Til testing" value={String(stats.testing)} subtitle="Kjøp og smakstest" tone="blue" />
         <StatCard title="Godkjente" value={String(stats.accepted)} subtitle="Kan brukes fast" />
         <StatCard title="Mulig sparing" value={kr(stats.potentialSaving)} subtitle="Basert på siste pris" tone="purple" />
       </div>
 
-      {message ? <p className="mt-5 rounded-xl bg-emerald-50 p-3 text-sm text-brand">{message}</p> : null}
-      {error ? <p className="mt-5 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p> : null}
+      {message ? <p className="notice-success mt-5">{message}</p> : null}
+      {error ? <p className="notice-error mt-5">{error}</p> : null}
 
       <section className="card mt-6 overflow-hidden">
         <div className="border-b border-line p-5">
-          <h2 className="text-lg font-semibold">Foreslåtte bytter</h2>
-          <p className="mt-1 text-sm text-muted">Godkjenn bare alternativer dere faktisk liker. Bruk “Testes” for blindtest i husholdningen.</p>
+          <h2 className="section-title">Foreslåtte bytter</h2>
+          <p className="section-subtitle">Godkjenn bare alternativer dere faktisk liker. Bruk “Testes” for blindtest i husholdningen.</p>
         </div>
 
         {loading ? <div className="p-10 text-center text-muted">Henter alternativer...</div> : null}

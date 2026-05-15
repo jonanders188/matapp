@@ -122,28 +122,28 @@ export default function PurchasesPage() {
 
   return (
     <AppShell active="Kjøp">
-      <div className="flex items-start justify-between gap-6">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Kjøp og kvitteringer</h1>
-          <p className="mt-1 text-muted">Registrer enkle kjøp manuelt. Dette bygger forbrukshistorikk og oppdaterer lager.</p>
+          <h1 className="page-heading">Kjøp og kvitteringer</h1>
+          <p className="page-subtitle">Registrer enkle kjøp manuelt. Dette bygger forbrukshistorikk og oppdaterer lager.</p>
         </div>
         <a href="/inventory" className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700">Se lager</a>
       </div>
 
-      <div className="mt-6 grid grid-cols-4 gap-5">
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 xl:gap-5">
         <StatCard title="Registrerte kjøp" value={String(purchases.length)} subtitle="Siste 30 vises" />
         <StatCard title="Varelinjer" value={String(itemCount)} subtitle="Manuelt registrert" tone="blue" />
         <StatCard title="Beløp" value={kr(totalAmount)} subtitle="På registrerte kjøp" tone="amber" />
         <StatCard title="Produkter" value={String(products.length)} subtitle="Kan kobles til varelinjer" tone="purple" />
       </div>
 
-      {message ? <p className="mt-5 rounded-xl bg-emerald-50 p-3 text-sm text-brand">{message}</p> : null}
-      {error ? <p className="mt-5 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p> : null}
+      {message ? <p className="notice-success mt-5">{message}</p> : null}
+      {error ? <p className="notice-error mt-5">{error}</p> : null}
 
       <div className="mt-6 grid grid-cols-[440px_1fr] gap-5">
         <section className="card p-5">
-          <h2 className="text-lg font-semibold">Legg inn kjøp</h2>
-          <p className="mt-1 text-sm text-muted">Første versjon støtter én varelinje om gangen. Bruk dette for å bygge historikk raskt.</p>
+          <h2 className="section-title">Legg inn kjøp</h2>
+          <p className="section-subtitle">Første versjon støtter én varelinje om gangen. Bruk dette for å bygge historikk raskt.</p>
 
           <div className="mt-5 space-y-4">
             <label className="block space-y-1 text-sm"><span className="font-medium">Butikk</span><input className="w-full rounded-xl border border-line px-3 py-2" value={storeName} onChange={(e) => setStoreName(e.target.value)} /></label>
@@ -162,14 +162,14 @@ export default function PurchasesPage() {
 
         <section className="card overflow-hidden">
           <div className="border-b border-line p-5">
-            <h2 className="text-lg font-semibold">Siste kjøp</h2>
-            <p className="text-sm text-muted">Bruk denne som enkel forbrukshistorikk før full kvitteringsimport.</p>
+            <h2 className="section-title">Siste kjøp</h2>
+            <p className="text-sm leading-6 text-muted">Bruk denne som enkel forbrukshistorikk før full kvitteringsimport.</p>
           </div>
           <div className="divide-y divide-line">
             {purchases.map((purchase) => (
               <article key={purchase.id} className="p-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div><h3 className="font-semibold">{purchase.store_name}</h3><p className="text-sm text-muted">{shortDate(purchase.purchased_at)} {purchase.receipt_no ? `· ${purchase.receipt_no}` : ""}</p></div>
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div><h3 className="font-semibold">{purchase.store_name}</h3><p className="text-sm leading-6 text-muted">{shortDate(purchase.purchased_at)} {purchase.receipt_no ? `· ${purchase.receipt_no}` : ""}</p></div>
                   <p className="text-lg font-bold text-brand">{kr(purchase.total_amount)}</p>
                 </div>
                 <div className="mt-3 space-y-2">

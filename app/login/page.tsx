@@ -58,7 +58,7 @@ export default function LoginPage() {
           Husholdningspilot
         </div>
 
-        <h1 className="text-3xl font-bold">Logg inn</h1>
+        <h1 className="page-heading">Logg inn</h1>
         <p className="mt-2 text-sm text-muted">Bruk Supabase-brukeren som er medlem av husholdningen.</p>
 
         <form onSubmit={signInWithPassword} className="mt-6 space-y-4">

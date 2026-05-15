@@ -187,12 +187,12 @@ export default function ProductsPage() {
 
   return (
     <AppShell active="Produkter">
-      <div className="flex items-start justify-between gap-6">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Basisutvalg</h1>
-          <p className="mt-1 text-muted">Produkter du importerer eller lagrer blir automatisk basisutvalg for Damgata 21D.</p>
+          <h1 className="page-heading">Basisutvalg</h1>
+          <p className="page-subtitle">Produkter du importerer eller lagrer blir automatisk basisutvalg for Damgata 21D.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <a href="/api/health" className="rounded-xl border border-line px-4 py-2 text-sm font-medium text-brand">Sjekk API-status</a>
           <a href="/recommendations" className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700">Anbefalinger</a>
           <button
@@ -212,7 +212,7 @@ export default function ProductsPage() {
         </div>
       </div>
 
-      <div className="mt-6 grid grid-cols-4 gap-5">
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 xl:gap-5">
         <StatCard title="Basisutvalg" value={String(basisProducts.length)} subtitle="Brukes til lager og handleliste" />
         <StatCard title="Med prisdata" value={String(productsWithPrices)} subtitle="Har observasjoner" tone="blue" />
         <StatCard title="Alle lagrede" value={String(saved.length)} subtitle="Produkter i husholdningen" tone="amber" />
@@ -220,7 +220,7 @@ export default function ProductsPage() {
       </div>
 
       <section className="card mt-6 p-5">
-        <form onSubmit={search} className="flex gap-3">
+        <form onSubmit={search} className="flex flex-col gap-3 sm:flex-row">
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -231,17 +231,17 @@ export default function ProductsPage() {
             {loading ? "Søker..." : "Søk i Kassalapp"}
           </button>
         </form>
-        <p className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm text-brand">
+        <p className="notice-success mt-4">
           Alt du lagrer her blir lagt i basisutvalget. Fjern fra basisutvalget når varen ikke lenger skal styre lager, anbefalinger og handleliste. Produktet slettes ikke.
         </p>
-        {message ? <p className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm text-brand">{message}</p> : null}
-        {error ? <p className="mt-4 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p> : null}
+        {message ? <p className="notice-success mt-4">{message}</p> : null}
+        {error ? <p className="notice-error mt-4">{error}</p> : null}
       </section>
 
       <section className="space-y-4">
             <div>
-              <h2 className="text-lg font-semibold">Kassalapp-søk</h2>
-              <p className="text-sm text-muted">Resultatene vises rett under søket. Trykk Legg i basisutvalg for å lagre produktdata, næringsdata, kategori og alle butikkprisene som vises.</p>
+              <h2 className="section-title">Kassalapp-søk</h2>
+              <p className="text-sm leading-6 text-muted">Resultatene vises rett under søket. Trykk Legg i basisutvalg for å lagre produktdata, næringsdata, kategori og alle butikkprisene som vises.</p>
             </div>
 
             {Object.entries(grouped).map(([key, products]) => {
@@ -265,10 +265,10 @@ export default function ProductsPage() {
                       ) : null}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-4">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                         <div>
-                          <h2 className="text-lg font-semibold">{primary.name}</h2>
-                          <p className="text-sm text-muted">{primary.brand ?? "Ukjent merke"} · EAN {primary.ean ?? "mangler"}</p>
+                          <h2 className="section-title">{primary.name}</h2>
+                          <p className="text-sm leading-6 text-muted">{primary.brand ?? "Ukjent merke"} · EAN {primary.ean ?? "mangler"}</p>
                           <div className="mt-2 flex flex-wrap gap-2 text-xs">
                             {primary.category?.map((category) => (
                               <span key={`${primary.id}-${category.name}`} className="rounded-full bg-slate-100 px-2 py-1 text-muted">{category.name}</span>
@@ -286,7 +286,7 @@ export default function ProductsPage() {
                           {actionLoading === `save-${primary.id}` ? "Lagrer..." : `Legg i basisutvalg (${prices.length || products.length} priser)`}
                         </button>
                       </div>
-                      <div className="mt-4 grid grid-cols-4 gap-3">
+                      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                         {products.slice(0, 4).map((product) => (
                           <div key={`${product.id}-${product.store?.code}`} className="rounded-xl border border-line p-3 text-sm">
                             <p className="font-semibold">{product.store?.name ?? "Ukjent"}</p>
@@ -309,13 +309,13 @@ export default function ProductsPage() {
             {!results.length ? <div className="card p-8 text-center text-muted">Søk etter et produkt for å hente priser fra Kassalapp.</div> : null}
           </section>
 
-      <div className="mt-6 grid grid-cols-[1fr_420px] gap-5">
+      <div className="mt-6 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
         <section className="space-y-5">
           <section className="card p-5">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <h2 className="text-lg font-semibold">Basisutvalg og lagrede produkter</h2>
-                <p className="text-sm text-muted">Basisutvalget er varene som skal følges opp i lager, anbefalinger og handleliste. Du kan fjerne en vare fra basis uten å slette den.</p>
+                <h2 className="section-title">Basisutvalg og lagrede produkter</h2>
+                <p className="text-sm leading-6 text-muted">Basisutvalget er varene som skal følges opp i lager, anbefalinger og handleliste. Du kan fjerne en vare fra basis uten å slette den.</p>
               </div>
               <button onClick={loadSaved} className="rounded-xl border border-line px-3 py-2 text-sm font-medium text-brand">Oppdater</button>
             </div>
@@ -440,7 +440,7 @@ export default function ProductsPage() {
                   </div>
                 </div>
               ))}
-              {!saved.length ? <p className="text-sm text-muted">Ingen produkter lagret ennå.</p> : null}
+              {!saved.length ? <p className="text-sm leading-6 text-muted">Ingen produkter lagret ennå.</p> : null}
             </div>
           </section>
         </aside>

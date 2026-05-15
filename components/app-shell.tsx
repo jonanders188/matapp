@@ -60,15 +60,15 @@ function isActive(item: NavItem, active: string) {
 
 export function AppShell({ active, children }: { active: string; children: React.ReactNode }) {
   return (
-    <main className="min-h-screen bg-[#f6f7f5] p-3 sm:p-4">
-      <div className="mx-auto flex max-w-[1500px] flex-col overflow-hidden rounded-3xl border border-line bg-white shadow-soft lg:flex-row">
-        <aside className="shrink-0 border-b border-line bg-white p-4 lg:w-64 lg:border-b-0 lg:border-r lg:p-5">
-          <Link href="/dashboard" className="mb-5 flex items-center gap-3 text-xl font-bold text-brand lg:mb-8">
+    <main className="min-h-screen bg-[#f6f7f5] p-2 sm:p-4">
+      <div className="mx-auto flex min-h-[calc(100vh-1rem)] max-w-[1500px] flex-col overflow-hidden rounded-3xl border border-line bg-white shadow-soft sm:min-h-[calc(100vh-2rem)] lg:flex-row">
+        <aside className="shrink-0 border-b border-line bg-white p-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:w-64 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:p-5">
+          <Link href="/dashboard" className="mb-4 flex items-center gap-3 text-xl font-bold text-brand lg:mb-8">
             <span className="grid h-10 w-10 place-items-center rounded-2xl bg-brand-soft">🛒</span>
             <span>Husholdning</span>
           </Link>
 
-          <nav className="space-y-5">
+          <nav className="space-y-4 lg:space-y-5">
             {navSections.map((section) => (
               <div key={section.title}>
                 <p className="mb-2 px-2 text-xs font-semibold uppercase tracking-wide text-muted">{section.title}</p>
@@ -81,7 +81,7 @@ export function AppShell({ active, children }: { active: string; children: React
                         key={item.label}
                         href={item.href}
                         className={cx(
-                          "group flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50",
+                          "group flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50",
                           selected && "bg-brand-soft text-brand"
                         )}
                       >
@@ -125,5 +125,11 @@ export function AppShell({ active, children }: { active: string; children: React
 
 export function StatCard({ title, value, subtitle, tone = "green" }: { title: string; value: string; subtitle: string; tone?: "green" | "blue" | "amber" | "purple" | "red" }) {
   const tones = { green: "bg-emerald-50 border-emerald-100", blue: "bg-sky-50 border-sky-100", amber: "bg-amber-50 border-amber-100", purple: "bg-violet-50 border-violet-100", red: "bg-rose-50 border-rose-100" };
-  return <div className={cx("rounded-2xl border p-5", tones[tone])}><p className="text-sm font-medium text-slate-700">{title}</p><p className="mt-3 text-3xl font-bold">{value}</p><p className="mt-2 text-sm text-muted">{subtitle}</p></div>;
+  return (
+    <div className={cx("rounded-2xl border p-4 sm:p-5", tones[tone])}>
+      <p className="text-sm font-medium text-slate-700">{title}</p>
+      <p className="mt-3 break-words text-2xl font-bold tracking-tight sm:text-3xl">{value}</p>
+      <p className="mt-2 text-sm leading-5 text-muted">{subtitle}</p>
+    </div>
+  );
 }

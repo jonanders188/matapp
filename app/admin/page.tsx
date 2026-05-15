@@ -363,18 +363,18 @@ export default function AdminPage() {
 
   return (
     <AppShell active="Admin">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-4xl font-bold">Admin</h1>
-          <p className="mt-2 text-muted">Administrer husholdningen, medlemmer og hvem som har admin-tilgang.</p>
+          <h1 className="page-heading">Admin</h1>
+          <p className="page-subtitle">Administrer husholdningen, medlemmer og hvem som har admin-tilgang.</p>
         </div>
         <button onClick={loadAdmin} disabled={loading} className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-brand disabled:opacity-60">
           {loading ? "Laster..." : "Oppdater"}
         </button>
       </div>
 
-      {message ? <p className="mt-5 rounded-xl bg-emerald-50 p-3 text-sm text-brand">{message}</p> : null}
-      {error ? <p className="mt-5 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p> : null}
+      {message ? <p className="notice-success mt-5">{message}</p> : null}
+      {error ? <p className="notice-error mt-5">{error}</p> : null}
 
       {loading && !payload ? (
         <section className="card mt-8 p-6 text-sm text-muted">Laster admin-grensesnitt...</section>
@@ -382,18 +382,18 @@ export default function AdminPage() {
 
       {payload ? (
         <>
-          <div className="mt-8 grid grid-cols-4 gap-5">
+          <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 xl:gap-5">
             <StatCard title="Husholdning" value={payload.household.name} subtitle="Aktiv familie" />
             <StatCard title="Medlemmer" value={String(payload.members.length)} subtitle="Koblet til husholdningen" tone="blue" />
             <StatCard title="Adminer" value={String(adminCount)} subtitle="Kan administrere brukere" tone="amber" />
             <StatCard title="Din rolle" value={roleLabel(payload.currentRole)} subtitle="Innlogget bruker" tone="purple" />
           </div>
 
-          <div className="mt-8 grid grid-cols-[460px_1fr] gap-6">
+          <div className="mt-8 grid grid-cols-1 gap-6 xl:grid-cols-[460px_minmax(0,1fr)]">
             <aside className="space-y-6">
               <section className="card p-5">
-                <h2 className="text-lg font-semibold">Husholdning</h2>
-                <p className="mt-1 text-sm text-muted">Endre navn og budsjett som vises i appen.</p>
+                <h2 className="section-title">Husholdning</h2>
+                <p className="section-subtitle">Endre navn og budsjett som vises i appen.</p>
 
                 <form onSubmit={saveHousehold} className="mt-5 space-y-4">
                   <label className="block text-sm font-medium text-slate-700">
@@ -424,8 +424,8 @@ export default function AdminPage() {
               <section className="card p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h2 className="text-lg font-semibold">Butikker i prissammenligning</h2>
-                    <p className="mt-1 text-sm text-muted">
+                    <h2 className="section-title">Butikker i prissammenligning</h2>
+                    <p className="section-subtitle">
                       Slå av butikker du ikke vil se. Lavere prioritet velges først ved lik pris.
                     </p>
                   </div>
@@ -484,8 +484,8 @@ export default function AdminPage() {
               <section className="card p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h2 className="text-lg font-semibold">Priskilder i sammenligning</h2>
-                    <p className="mt-1 text-sm text-muted">
+                    <h2 className="section-title">Priskilder i sammenligning</h2>
+                    <p className="section-subtitle">
                       Velg hvilke prisobservasjoner som skal brukes i dashboard og prissammenligning.
                     </p>
                   </div>
@@ -502,7 +502,7 @@ export default function AdminPage() {
                 {priceSourcePreferences ? (
                   <div className="mt-5 space-y-3">
                     {priceSourceOptions.map((option) => (
-                      <label key={option.key} className="flex items-start justify-between gap-4 rounded-2xl border border-line p-4">
+                      <label key={option.key} className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between rounded-2xl border border-line p-4">
                         <span>
                           <span className="block text-sm font-semibold text-slate-800">{option.label}</span>
                           <span className="mt-1 block text-xs leading-5 text-muted">{option.description}</span>
@@ -525,8 +525,8 @@ export default function AdminPage() {
               </section>
 
               <section className="card p-5">
-                <h2 className="text-lg font-semibold">Legg til bruker</h2>
-                <p className="mt-1 text-sm text-muted">Brukeren opprettes i Supabase Auth hvis e-posten ikke finnes. Personen kan deretter logge inn med magic link.</p>
+                <h2 className="section-title">Legg til bruker</h2>
+                <p className="section-subtitle">Brukeren opprettes i Supabase Auth hvis e-posten ikke finnes. Personen kan deretter logge inn med magic link.</p>
 
                 <form onSubmit={addMember} className="mt-5 space-y-4">
                   <label className="block text-sm font-medium text-slate-700">
@@ -572,13 +572,13 @@ export default function AdminPage() {
 
             <section className="card overflow-hidden">
               <div className="border-b border-line p-5">
-                <h2 className="text-lg font-semibold">Brukere i husholdningen</h2>
-                <p className="text-sm text-muted">Endre rolle til admin, medlem eller barn. Husholdningen må alltid ha minst én admin.</p>
+                <h2 className="section-title">Brukere i husholdningen</h2>
+                <p className="text-sm leading-6 text-muted">Endre rolle til admin, medlem eller barn. Husholdningen må alltid ha minst én admin.</p>
               </div>
 
               <div className="divide-y divide-line">
                 {payload.members.map((member) => (
-                  <article key={member.id} className="grid grid-cols-[1fr_180px_130px] gap-4 p-5">
+                  <article key={member.id} className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_180px_130px] p-5">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <input

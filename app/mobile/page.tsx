@@ -1011,7 +1011,7 @@ export default function MobileScanPage() {
           </a>
         </header>
 
-        <section className="mt-5 grid grid-cols-4 gap-2 rounded-3xl bg-white/8 p-2 ring-1 ring-white/10">
+        <section className="mt-5 grid grid-cols-2 gap-2 lg:grid-cols-4 rounded-3xl bg-white/8 p-2 ring-1 ring-white/10">
           <button
             onClick={() => setMode("in")}
             className={`rounded-2xl px-3 py-4 text-left transition ${mode === "in" ? "bg-emerald-400 text-slate-950" : "bg-white/5 text-white"}`}
@@ -1192,7 +1192,7 @@ export default function MobileScanPage() {
               <label className="text-sm font-bold text-slate-700">Butikk</label>
               {storeDetectionMessage ? <div className="rounded-2xl bg-amber-50 p-3 text-sm font-semibold text-amber-800">{storeDetectionMessage}</div> : null}
               {receiptStoreCandidates.length ? (
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {receiptStoreCandidates.map((store) => (
                     <button
                       key={store.storeKey}

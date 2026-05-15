@@ -158,12 +158,12 @@ export default function InventoryPage() {
 
   return (
     <AppShell active="Lager">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Lager</h1>
-          <p className="mt-1 text-muted">Oppdater beholdning raskt med +, -, tomt og ønsket nivå.</p>
+          <h1 className="page-heading">Lager</h1>
+          <p className="page-subtitle">Oppdater beholdning raskt med +, -, tomt og ønsket nivå.</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row">
           <button onClick={() => void loadInventory()} className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
             Oppdater lager
           </button>
@@ -284,7 +284,7 @@ export default function InventoryPage() {
                   </div>
                   <button onClick={() => void updateItem(item.id, { action: "increment" })} className="rounded-lg bg-white px-3 py-2 text-brand shadow-sm">+1</button>
                 </div>
-              )) : <p className="text-sm text-muted">Ingen akutte påfyll akkurat nå.</p>}
+              )) : <p className="text-sm leading-6 text-muted">Ingen akutte påfyll akkurat nå.</p>}
             </div>
           </section>
 
@@ -300,7 +300,7 @@ export default function InventoryPage() {
                   )}
                   <p className="text-xs text-muted">{item.quantity} av {item.desired_quantity} stk · {item.status}</p>
                 </div>
-              )) : <p className="text-sm text-muted">Ingen varer å holde igjen på ennå.</p>}
+              )) : <p className="text-sm leading-6 text-muted">Ingen varer å holde igjen på ennå.</p>}
             </div>
           </section>
 

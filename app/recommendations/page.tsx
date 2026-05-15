@@ -96,12 +96,12 @@ export default function RecommendationsPage() {
 
   return (
     <AppShell active="Anbefalinger">
-      <div className="flex items-start justify-between gap-6">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Anbefalinger</h1>
-          <p className="mt-1 text-muted">Kjøp, vent og bruk opp basert på målpris, lager og Kassalapp-priser.</p>
+          <h1 className="page-heading">Anbefalinger</h1>
+          <p className="page-subtitle">Kjøp, vent og bruk opp basert på målpris, lager og Kassalapp-priser.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <a href="/products" className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700">Produkter</a>
           <a href="/shopping-list" className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700">Handleliste</a>
           <button
@@ -114,22 +114,22 @@ export default function RecommendationsPage() {
         </div>
       </div>
 
-      <div className="mt-6 grid grid-cols-4 gap-5">
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 xl:gap-5">
         <StatCard title="Anbefalinger" value={String(recommendations.length)} subtitle="Aktive forslag" />
         <StatCard title="Kjøp/hamstre" value={String(buyCount)} subtitle="Varer verdt å kjøpe" tone="blue" />
         <StatCard title="Vent" value={String(waitCount)} subtitle="Ikke gode nok priser" tone="amber" />
         <StatCard title="Mulig sparing" value={kr(savings)} subtitle={`${useUpCount} bruk-opp forslag`} tone="purple" />
       </div>
 
-      {message ? <p className="mt-5 rounded-xl bg-emerald-50 p-3 text-sm text-brand">{message}</p> : null}
-      {error ? <p className="mt-5 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p> : null}
+      {message ? <p className="notice-success mt-5">{message}</p> : null}
+      {error ? <p className="notice-error mt-5">{error}</p> : null}
 
-      <div className="mt-6 grid grid-cols-[1fr_360px] gap-5">
+      <div className="mt-6 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
         <section className="card overflow-hidden">
           <div className="flex items-center justify-between border-b border-line p-5">
             <div>
-              <h2 className="text-lg font-semibold">Prioritert liste</h2>
-              <p className="text-sm text-muted">Forslagene regenereres når prisdata eller lager endres.</p>
+              <h2 className="section-title">Prioritert liste</h2>
+              <p className="text-sm leading-6 text-muted">Forslagene regenereres når prisdata eller lager endres.</p>
             </div>
             <button onClick={loadRecommendations} className="rounded-xl border border-line px-3 py-2 text-sm font-medium text-brand">Oppdater</button>
           </div>
@@ -137,7 +137,7 @@ export default function RecommendationsPage() {
           <div className="divide-y divide-line">
             {recommendations.map((recommendation) => (
               <article key={`${recommendation.id ?? recommendation.product_id}-${recommendation.action}`} className="p-5">
-                <div className="flex items-start justify-between gap-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="flex min-w-0 gap-3">
                     <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl bg-slate-50">
                       {recommendation.image_url ? (
@@ -157,16 +157,16 @@ export default function RecommendationsPage() {
                         {recommendation.category ? <span className="pill bg-slate-50 text-muted">{recommendation.category}</span> : null}
                       </div>
                       <Link href={`/products/${recommendation.product_id}`} className="mt-3 block text-lg font-semibold text-brand hover:underline">{recommendation.product_name}</Link>
-                      <p className="mt-1 text-sm text-muted">{recommendation.reason}</p>
+                      <p className="section-subtitle">{recommendation.reason}</p>
                     </div>
                   </div>
                   <div className="shrink-0 text-right">
                     <p className="text-xl font-bold text-brand">{kr(recommendation.price)}</p>
-                    <p className="text-sm text-muted">{recommendation.store_name ?? "Ingen butikk"}</p>
+                    <p className="text-sm leading-6 text-muted">{recommendation.store_name ?? "Ingen butikk"}</p>
                     {recommendation.estimated_saving ? <p className="mt-2 text-xs text-brand">Sparer ca. {kr(recommendation.estimated_saving)}</p> : null}
                   </div>
                 </div>
-                <div className="mt-4 grid grid-cols-4 gap-3 text-sm">
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 text-sm">
                   <div className="rounded-xl bg-slate-50 p-3"><p className="text-muted">Målpris</p><p className="font-semibold">{kr(recommendation.target_price)}</p></div>
                   <div className="rounded-xl bg-slate-50 p-3"><p className="text-muted">Lager</p><p className="font-semibold">{recommendation.current_stock ?? "-"} / {recommendation.desired_stock ?? "-"}</p></div>
                   <div className="rounded-xl bg-slate-50 p-3"><p className="text-muted">Gyldig til</p><p className="font-semibold">{shortDate(recommendation.valid_until)}</p></div>

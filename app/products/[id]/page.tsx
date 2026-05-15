@@ -303,13 +303,13 @@ export default function ProductRulesPage() {
 
   return (
     <AppShell active="Produkter">
-      <div className="flex items-start justify-between gap-6">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <Link href="/products" className="text-sm font-medium text-brand">← Tilbake til produkter</Link>
-          <h1 className="mt-3 text-3xl font-bold">Produkt i basisutvalg</h1>
-          <p className="mt-1 text-muted">Sett målpris, lagergrenser og om produktet skal være med i basisutvalget.</p>
+          <h1 className="page-heading mt-3">Produkt i basisutvalg</h1>
+          <p className="page-subtitle">Sett målpris, lagergrenser og om produktet skal være med i basisutvalget.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button onClick={syncProduct} disabled={syncing || loading} className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60">
             {syncing ? "Synker..." : "Synk pris for produkt"}
           </button>
@@ -322,20 +322,20 @@ export default function ProductRulesPage() {
         </div>
       </div>
 
-      {message ? <p className="mt-5 rounded-xl bg-emerald-50 p-3 text-sm text-brand">{message}</p> : null}
-      {error ? <p className="mt-5 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p> : null}
+      {message ? <p className="notice-success mt-5">{message}</p> : null}
+      {error ? <p className="notice-error mt-5">{error}</p> : null}
 
       {loading ? <div className="card mt-6 p-10 text-center text-muted">Henter produkt...</div> : null}
 
       {data ? (
         <>
-          <section className="mt-6 grid grid-cols-[280px_1fr] gap-5">
+          <section className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
             <div className="card p-5">
               <div className="grid h-44 place-items-center overflow-hidden rounded-2xl bg-slate-50 text-5xl">
                 {data.product.image_url ? <img src={data.product.image_url} alt="" className="h-full w-full object-contain" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : "🛒"}
               </div>
               <h2 className="mt-4 text-xl font-semibold">{data.product.name}</h2>
-              <p className="mt-1 text-sm text-muted">{data.product.brand ?? "Ukjent merke"} · EAN {data.product.ean ?? "mangler"}</p>
+              <p className="section-subtitle">{data.product.brand ?? "Ukjent merke"} · EAN {data.product.ean ?? "mangler"}</p>
               <div className="mt-4 flex flex-wrap gap-2">
                 {data.product.is_basis ? <span className="pill bg-emerald-50 text-brand">Basisutvalg</span> : <span className="pill bg-slate-100 text-muted">Ikke basis</span>}
                 {data.product.is_freezable ? <span className="pill bg-sky-50 text-sky-700">Kan fryses</span> : null}
@@ -343,7 +343,7 @@ export default function ProductRulesPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-4 gap-5">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 xl:gap-5">
               <StatCard title="Siste pris" value={kr(latest?.price ?? null)} subtitle={latest ? `${latest.store_name} · ${priceSourceLabel(latest.source)}` : "Ingen prisdata"} />
               <StatCard title="Målpris" value={kr(data.product.target_price)} subtitle={data.product.target_price_unit === "unit_price" ? "Per enhet" : "Per stk/pakke"} tone="amber" />
               <StatCard title="Lager" value={`${stockTotal} / ${desiredTotal}`} subtitle="Faktisk / ønsket" tone={stockTotal < desiredTotal ? "red" : "green"} />
@@ -351,12 +351,12 @@ export default function ProductRulesPage() {
             </div>
           </section>
 
-          <div className="mt-6 grid grid-cols-[1fr_420px] gap-5">
+          <div className="mt-6 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
             <section className="card p-5">
-              <h2 className="text-lg font-semibold">Basisutvalg, regler og målpris</h2>
-              <p className="mt-1 text-sm text-muted">Når Basisutvalg er på, brukes varen i lager, anbefalinger og automatisk handleliste. Slå av for å fjerne den fra basisutvalget uten å slette produktet.</p>
+              <h2 className="section-title">Basisutvalg, regler og målpris</h2>
+              <p className="section-subtitle">Når Basisutvalg er på, brukes varen i lager, anbefalinger og automatisk handleliste. Slå av for å fjerne den fra basisutvalget uten å slette produktet.</p>
 
-              <div className="mt-5 grid grid-cols-2 gap-4">
+              <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
                 <label className="space-y-1 text-sm"><span className="font-medium">Produktnavn</span><input className="w-full rounded-xl border border-line px-3 py-2" value={String(form.name ?? "")} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
                 <label className="space-y-1 text-sm"><span className="font-medium">Merke</span><input className="w-full rounded-xl border border-line px-3 py-2" value={String(form.brand ?? "")} onChange={(e) => setForm({ ...form, brand: e.target.value })} /></label>
                 <label className="space-y-1 text-sm"><span className="font-medium">Kategori</span><input className="w-full rounded-xl border border-line px-3 py-2" placeholder="Hygiene, Italiensk, Meieri..." value={String(form.category ?? "")} onChange={(e) => setForm({ ...form, category: e.target.value })} /></label>
@@ -457,7 +457,7 @@ export default function ProductRulesPage() {
                       <div><dt className="font-semibold text-slate-500">Datakvalitet</dt><dd>{shortJson(sourceQuality(data.product, "openfoodfacts")) ?? "Ikke registrert"}</dd></div>
                     </dl>
                     {openFoodFactsImages(data.product).length ? (
-                      <div className="mt-3 grid grid-cols-2 gap-2">
+                      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                         {openFoodFactsImages(data.product).map((image) => (
                           <a key={image.label} href={image.url} target="_blank" rel="noreferrer" className="rounded-xl border border-line bg-white p-2 text-xs font-medium text-brand">
                             {image.label}-bilde
@@ -484,7 +484,7 @@ export default function ProductRulesPage() {
                       <p className="font-bold text-brand">{kr(item.price)}</p>
                     </div>
                   ))}
-                  {!data.lowest_by_store.length ? <p className="text-sm text-muted">Ingen prisobservasjoner ennå.</p> : null}
+                  {!data.lowest_by_store.length ? <p className="text-sm leading-6 text-muted">Ingen prisobservasjoner ennå.</p> : null}
                 </div>
               </section>
 
@@ -497,7 +497,7 @@ export default function ProductRulesPage() {
                       <p className="mt-1 text-xs text-muted">Oppdatert {shortDate(item.updated_at)}</p>
                     </div>
                   ))}
-                  {!data.inventory.length ? <p className="text-sm text-muted">Ingen lagerlinje ennå. Lagre regler for å opprette en.</p> : null}
+                  {!data.inventory.length ? <p className="text-sm leading-6 text-muted">Ingen lagerlinje ennå. Lagre regler for å opprette en.</p> : null}
                 </div>
               </section>
             </aside>

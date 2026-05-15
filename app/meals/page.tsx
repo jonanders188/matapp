@@ -83,12 +83,12 @@ export default function MealsPage() {
 
   return (
     <AppShell active="Middager">
-      <div className="flex items-start justify-between gap-6">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Middagsforslag</h1>
-          <p className="mt-1 text-muted">Forslag basert på lager, fryser og varer som bør brukes opp.</p>
+          <h1 className="page-heading">Middagsforslag</h1>
+          <p className="page-subtitle">Forslag basert på lager, fryser og varer som bør brukes opp.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <a href="/inventory" className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700">Lager</a>
           <a href="/shopping-list" className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700">Handleliste</a>
           <button onClick={loadMeals} disabled={loading} className="rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
@@ -97,7 +97,7 @@ export default function MealsPage() {
         </div>
       </div>
 
-      <div className="mt-6 grid grid-cols-4 gap-5">
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 xl:gap-5">
         <StatCard title="Lagerlinjer analysert" value={String(payload?.stats.inventoryItems ?? 0)} subtitle="Fra lager og fryser" />
         <StatCard title="Sterke middagsforslag" value={String(payload?.stats.highConfidence ?? 0)} subtitle="Høy match med lager" tone="blue" />
         <StatCard title="Bruk-opp-retter" value={String(payload?.stats.useUpMeals ?? 0)} subtitle="Reduserer matsvinn" tone="amber" />
@@ -127,11 +127,11 @@ export default function MealsPage() {
         ))}
       </div>
 
-      <div className="mt-6 grid grid-cols-[1fr_360px] gap-5">
+      <div className="mt-6 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
         <section className="grid gap-5">
           {filtered.map((suggestion) => (
             <article key={suggestion.id} className="card p-5">
-              <div className="flex items-start justify-between gap-4">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="text-xl font-semibold">{suggestion.title}</h2>
@@ -149,19 +149,19 @@ export default function MealsPage() {
               <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
                 <div className="rounded-2xl bg-emerald-50 p-4">
                   <p className="font-semibold text-brand">Dere har</p>
-                  <p className="mt-2 text-muted">{suggestion.availableIngredients.length ? suggestion.availableIngredients.join(", ") : "Ingen nøkkelvarer funnet"}</p>
+                  <p className="page-subtitle">{suggestion.availableIngredients.length ? suggestion.availableIngredients.join(", ") : "Ingen nøkkelvarer funnet"}</p>
                 </div>
                 <div className="rounded-2xl bg-amber-50 p-4">
                   <p className="font-semibold text-amber-800">Mangler / vurder</p>
-                  <p className="mt-2 text-muted">{suggestion.missingIngredients.length ? suggestion.missingIngredients.join(", ") : "Ingen nøkkelvarer mangler"}</p>
+                  <p className="page-subtitle">{suggestion.missingIngredients.length ? suggestion.missingIngredients.join(", ") : "Ingen nøkkelvarer mangler"}</p>
                 </div>
                 <div className="rounded-2xl bg-sky-50 p-4">
                   <p className="font-semibold text-sky-800">Bruk opp</p>
-                  <p className="mt-2 text-muted">{suggestion.useUpIngredients.length ? suggestion.useUpIngredients.join(", ") : "Ingen spesifikke bruk-opp-varer"}</p>
+                  <p className="page-subtitle">{suggestion.useUpIngredients.length ? suggestion.useUpIngredients.join(", ") : "Ingen spesifikke bruk-opp-varer"}</p>
                 </div>
               </div>
 
-              <div className="mt-5 grid grid-cols-[1fr_260px] gap-4">
+              <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
                 <div>
                   <p className="text-sm font-semibold">Fremgangsmåte</p>
                   <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-muted">
@@ -170,7 +170,7 @@ export default function MealsPage() {
                 </div>
                 <div className="rounded-2xl border border-line p-4 text-sm">
                   <p className="font-semibold">Plan</p>
-                  <p className="mt-2 text-muted">⏱ {suggestion.timeMinutes} min</p>
+                  <p className="page-subtitle">⏱ {suggestion.timeMinutes} min</p>
                   <p className="text-muted">🍽 {suggestion.portions} porsjoner</p>
                   <p className="mt-3 text-muted">{suggestion.shoppingHint}</p>
                 </div>

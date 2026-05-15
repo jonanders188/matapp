@@ -113,14 +113,14 @@ export default function PricesPage() {
 
   return (
     <AppShell active="Prissammenligning">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Prissammenligning</h1>
-          <p className="mt-1 text-muted">
+          <h1 className="page-heading">Prissammenligning</h1>
+          <p className="page-subtitle">
             Sammenlign butikker basert på basisutvalget til Damgata 21D, ikke tilfeldige produkter.
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row">
           <Link href="/products" className="rounded-xl border border-line px-4 py-2 text-sm font-medium text-brand">
             Endre basisutvalg
           </Link>
@@ -132,18 +132,18 @@ export default function PricesPage() {
 
       {error ? <div className="mt-6 rounded-2xl bg-rose-50 p-4 text-rose-700">{error}</div> : null}
 
-      <div className="mt-6 grid grid-cols-4 gap-5">
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 xl:gap-5">
         <StatCard title="Billigste butikk" value={data.bestStore?.store ?? "-"} subtitle={data.bestStore ? `${kr(data.bestStore.total)} for basisutvalget` : "Ingen priser ennå"} />
         <StatCard title="Mulig besparelse" value={kr(data.potentialSaving)} subtitle="Mot dyreste sammenlignbare butikk" tone="blue" />
         <StatCard title="Basisvarer sammenlignet" value={`${data.pricedProductCount}/${data.productCount}`} subtitle={comparedSubtitle} tone="amber" />
         <StatCard title="Under målpris" value={String(targetPriceHits)} subtitle="Basisvarer under ønsket pris" tone="purple" />
       </div>
 
-      <div className="mt-6 grid grid-cols-[1fr_340px] gap-5">
+      <div className="mt-6 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
         <section className="card overflow-hidden">
           <div className="border-b border-line p-5">
-            <h2 className="text-lg font-semibold">Basisutvalg per butikk</h2>
-            <p className="text-sm text-muted">
+            <h2 className="section-title">Basisutvalg per butikk</h2>
+            <p className="text-sm leading-6 text-muted">
               Tabellen viser priser fra de siste 30 dagene. Bare priser som er maks 14 dager gamle kan vinne beste pris.
             </p>
           </div>
@@ -233,7 +233,7 @@ export default function PricesPage() {
             {data.bestStore ? (
               <div className="mt-4">
                 <p className="text-2xl font-bold text-brand">{data.bestStore.store}</p>
-                <p className="mt-1 text-sm text-muted">
+                <p className="section-subtitle">
                   {kr(data.bestStore.total)} · {data.bestStore.matchedProducts}/{data.bestStore.productCount} varer · {data.bestStore.coveragePct}% dekning
                 </p>
               </div>
@@ -246,7 +246,7 @@ export default function PricesPage() {
             <h2 className="font-semibold">Butikkrangering</h2>
             <div className="mt-4 space-y-3 text-sm">
               {data.stores.slice(0, 6).map((store, index) => (
-                <div key={store.storeKey} className="flex items-start justify-between gap-4 rounded-xl bg-slate-50 p-3">
+                <div key={store.storeKey} className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between rounded-xl bg-slate-50 p-3">
                   <div>
                     <p className="font-semibold">{index + 1}. {store.store}</p>
                     <p className="text-muted">{store.coveragePct}% dekning · mangler {store.missingProducts}</p>
