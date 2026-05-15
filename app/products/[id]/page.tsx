@@ -28,6 +28,9 @@ type Product = {
   nutrition?: unknown | null;
   labels?: unknown | null;
   category_path?: string[] | null;
+  openfoodfacts_raw?: unknown | null;
+  enrichment_sources?: unknown | null;
+  data_quality?: unknown | null;
 };
 
 type InventoryItem = {
@@ -119,6 +122,7 @@ export default function ProductRulesPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [enriching, setEnriching] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -183,6 +187,21 @@ export default function ProductRulesPage() {
     await load();
   }
 
+  async function enrichProduct() {
+    setEnriching(true);
+    setError(null);
+    setMessage(null);
+    const response = await authFetch(`/api/products/${productId}/enrich`, { method: "POST" });
+    const payload = await response.json().catch(() => null);
+    setEnriching(false);
+    if (!response.ok) {
+      setError(payload?.error ?? payload?.message ?? "Kunne ikke berike produktdata");
+      return;
+    }
+    setMessage(payload?.message ?? "Produktdata er beriket fra Open Food Facts.");
+    await load();
+  }
+
   useEffect(() => {
     load().catch(() => undefined);
   }, [productId]);
@@ -206,6 +225,9 @@ export default function ProductRulesPage() {
         <div className="flex gap-2">
           <button onClick={syncProduct} disabled={syncing || loading} className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60">
             {syncing ? "Synker..." : "Synk pris for produkt"}
+          </button>
+          <button onClick={enrichProduct} disabled={enriching || loading || !data?.product.ean} className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60">
+            {enriching ? "Beriker..." : "Berik produktdata"}
           </button>
           <button onClick={save} disabled={saving || loading} className="rounded-xl bg-brand px-5 py-2 text-sm font-semibold text-white disabled:opacity-60">
             {saving ? "Lagrer..." : "Lagre regler"}
@@ -265,7 +287,15 @@ export default function ProductRulesPage() {
 
               <label className="mt-5 block space-y-1 text-sm"><span className="font-medium">Notater / regel</span><textarea className="min-h-28 w-full rounded-xl border border-line px-3 py-2" value={String(form.notes ?? "")} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Eksempel: Kjøp OMO under 50 kr når lager <= 1." /></label>
               <section className="mt-5 rounded-2xl border border-line bg-slate-50 p-4">
-                <h3 className="font-semibold">Produktdata fra Kassalapp</h3>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="font-semibold">Produktdata fra eksterne kilder</h3>
+                    <p className="mt-1 text-xs text-muted">Kassalapp og Open Food Facts kan fylle ingredienser, allergener, næring, bilder og kategori. Kontroller alltid emballasjen ved allergi.</p>
+                  </div>
+                  <button type="button" onClick={enrichProduct} disabled={enriching || loading || !data.product.ean} className="rounded-xl border border-line px-3 py-2 text-xs font-semibold text-brand disabled:opacity-60">
+                    {enriching ? "Beriker..." : "Berik fra Open Food Facts"}
+                  </button>
+                </div>
                 <div className="mt-3 space-y-3 text-sm">
                   {data.product.category_path?.length ? (
                     <div><p className="text-xs uppercase tracking-wide text-muted">Kategori</p><p>{data.product.category_path.join(" › ")}</p></div>
@@ -285,8 +315,14 @@ export default function ProductRulesPage() {
                   {shortJson(data.product.labels) ? (
                     <div><p className="text-xs uppercase tracking-wide text-muted">Merking</p><p>{shortJson(data.product.labels)}</p></div>
                   ) : null}
+                  {shortJson(data.product.enrichment_sources) ? (
+                    <div><p className="text-xs uppercase tracking-wide text-muted">Kilder</p><p>{shortJson(data.product.enrichment_sources)}</p></div>
+                  ) : null}
+                  {shortJson(data.product.data_quality) ? (
+                    <div><p className="text-xs uppercase tracking-wide text-muted">Datakvalitet</p><p>{shortJson(data.product.data_quality)}</p></div>
+                  ) : null}
                   {!data.product.description && !data.product.ingredients && !data.product.allergens && !data.product.nutrition && !data.product.labels && !data.product.category_path?.length ? (
-                    <p className="text-muted">Ingen ekstra produktdata lagret ennå. Trykk Synk pris for produkt.</p>
+                    <p className="text-muted">Ingen ekstra produktdata lagret ennå. Trykk Berik produktdata eller Synk pris for produkt.</p>
                   ) : null}
                 </div>
               </section>
