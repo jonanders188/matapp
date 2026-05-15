@@ -50,6 +50,84 @@ function productPayload(product: KassalappProduct, householdId: string, ean: str
   };
 }
 
+type ShelfProductRow = {
+  id: string;
+  name: string;
+  brand: string | null;
+  ean: string | null;
+  category: string | null;
+  package_size: string | null;
+  image_url: string | null;
+  desired_stock: number | null;
+  target_price?: number | null;
+  target_price_unit?: string | null;
+  preferred_store?: string | null;
+  is_basis: boolean | null;
+  is_freezable?: boolean | null;
+  notes?: string | null;
+};
+
+type HouseholdProductSettings = {
+  desired_stock?: number | null;
+  target_price?: number | null;
+  target_price_unit?: string | null;
+  preferred_store?: string | null;
+  is_freezable?: boolean | null;
+  notes?: string | null;
+};
+
+function mergeHouseholdProduct(product: ShelfProductRow, householdProduct: HouseholdProductSettings | null | undefined) {
+  if (!householdProduct) return product;
+
+  return {
+    ...product,
+    is_basis: true,
+    desired_stock: householdProduct.desired_stock ?? product.desired_stock,
+    target_price: householdProduct.target_price ?? product.target_price,
+    target_price_unit: householdProduct.target_price_unit ?? product.target_price_unit,
+    preferred_store: householdProduct.preferred_store ?? product.preferred_store,
+    is_freezable: householdProduct.is_freezable ?? product.is_freezable,
+    notes: householdProduct.notes ?? product.notes
+  };
+}
+
+async function ensureHouseholdProduct(
+  householdId: string,
+  productId: string,
+  settings: HouseholdProductSettings = {}
+) {
+  const supabase = getSupabaseAdmin();
+  const payload = {
+    household_id: householdId,
+    product_id: productId,
+    is_basis: true,
+    desired_stock: settings.desired_stock ?? 1,
+    target_price: settings.target_price ?? null,
+    target_price_unit: settings.target_price_unit ?? "unit",
+    preferred_store: settings.preferred_store ?? null,
+    is_freezable: settings.is_freezable ?? false,
+    notes: settings.notes ?? null,
+    updated_at: new Date().toISOString()
+  };
+
+  const existing = await supabase
+    .from("household_products")
+    .select("id, is_basis, desired_stock, target_price, target_price_unit, preferred_store, is_freezable, notes")
+    .eq("household_id", householdId)
+    .eq("product_id", productId)
+    .limit(1);
+
+  if (existing.error) throw existing.error;
+
+  const existingRow = existing.data?.[0] ?? null;
+  const result = existingRow
+    ? await supabase.from("household_products").update(payload).eq("id", existingRow.id).select("*").single()
+    : await supabase.from("household_products").insert(payload).select("*").single();
+
+  if (result.error) throw result.error;
+  return result.data;
+}
+
 function normalizeStoreKey(value: unknown) {
   return String(value ?? "").trim().toLowerCase();
 }
@@ -73,8 +151,7 @@ async function findOrCreateProduct(householdId: string, ean: string) {
 
   const existing = await supabase
     .from("products")
-    .select("id, name, brand, ean, category, package_size, image_url, desired_stock, is_basis")
-    .eq("household_id", householdId)
+    .select("id, name, brand, ean, category, package_size, image_url, desired_stock, target_price, target_price_unit, preferred_store, is_basis, is_freezable, notes")
     .eq("ean", ean)
     .order("created_at", { ascending: true })
     .limit(1)
@@ -83,17 +160,22 @@ async function findOrCreateProduct(householdId: string, ean: string) {
   if (existing.error) throw existing.error;
 
   if (existing.data) {
-    if (existing.data.is_basis) return { product: existing.data, created: false };
+    let product = existing.data as ShelfProductRow;
 
-    const updated = await supabase
-      .from("products")
-      .update({ is_basis: true })
-      .eq("id", existing.data.id)
-      .select("id, name, brand, ean, category, package_size, image_url, desired_stock, is_basis")
-      .single();
+    if (!product.is_basis) {
+      const updated = await supabase
+        .from("products")
+        .update({ is_basis: true })
+        .eq("id", product.id)
+        .select("id, name, brand, ean, category, package_size, image_url, desired_stock, target_price, target_price_unit, preferred_store, is_basis, is_freezable, notes")
+        .single();
 
-    if (updated.error) throw updated.error;
-    return { product: updated.data, created: false };
+      if (updated.error) throw updated.error;
+      product = updated.data as ShelfProductRow;
+    }
+
+    const householdProduct = await ensureHouseholdProduct(householdId, product.id, product);
+    return { product: mergeHouseholdProduct(product, householdProduct), created: false };
   }
 
   const candidates = await findKassalappProductsByEan(ean);
@@ -106,11 +188,13 @@ async function findOrCreateProduct(householdId: string, ean: string) {
   const inserted = await supabase
     .from("products")
     .insert(productPayload(selected, householdId, ean))
-    .select("id, name, brand, ean, category, package_size, image_url, desired_stock, is_basis")
+    .select("id, name, brand, ean, category, package_size, image_url, desired_stock, target_price, target_price_unit, preferred_store, is_basis, is_freezable, notes")
     .single();
 
   if (inserted.error) throw inserted.error;
-  return { product: inserted.data, created: true };
+
+  const householdProduct = await ensureHouseholdProduct(householdId, inserted.data.id, inserted.data);
+  return { product: mergeHouseholdProduct(inserted.data, householdProduct), created: true };
 }
 
 export async function POST(request: Request) {
@@ -155,6 +239,10 @@ export async function POST(request: Request) {
     const supabase = getSupabaseAdmin();
     const { error } = await supabase.from("price_observations").insert({
       product_id: productResult.product.id,
+      household_id: householdId,
+      observed_by_household_id: householdId,
+      scope: "global",
+      visibility: "public",
       store_code: store.store_key,
       store_name: store.store_name,
       price,

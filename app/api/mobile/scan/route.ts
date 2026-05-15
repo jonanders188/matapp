@@ -49,6 +49,96 @@ function productPayload(product: KassalappProduct, householdId: string) {
   };
 }
 
+type MobileProductRow = {
+  id: string;
+  name: string;
+  brand: string | null;
+  ean: string | null;
+  category: string | null;
+  package_size: string | null;
+  image_url: string | null;
+  desired_stock: number | null;
+  target_price?: number | null;
+  target_price_unit?: string | null;
+  preferred_store?: string | null;
+  is_basis: boolean | null;
+  is_freezable?: boolean | null;
+  notes?: string | null;
+};
+
+type HouseholdProductSettings = {
+  desired_stock?: number | null;
+  target_price?: number | null;
+  target_price_unit?: string | null;
+  preferred_store?: string | null;
+  is_freezable?: boolean | null;
+  notes?: string | null;
+};
+
+function householdProductPayload(
+  householdId: string,
+  productId: string,
+  settings: HouseholdProductSettings = {}
+) {
+  return {
+    household_id: householdId,
+    product_id: productId,
+    is_basis: true,
+    desired_stock: settings.desired_stock ?? 1,
+    target_price: settings.target_price ?? null,
+    target_price_unit: settings.target_price_unit ?? "unit",
+    preferred_store: settings.preferred_store ?? null,
+    is_freezable: settings.is_freezable ?? false,
+    notes: settings.notes ?? null,
+    updated_at: new Date().toISOString()
+  };
+}
+
+function mergeHouseholdProduct(product: MobileProductRow, householdProduct: HouseholdProductSettings | null | undefined) {
+  if (!householdProduct) return product;
+
+  return {
+    ...product,
+    is_basis: true,
+    desired_stock: householdProduct.desired_stock ?? product.desired_stock,
+    target_price: householdProduct.target_price ?? product.target_price,
+    target_price_unit: householdProduct.target_price_unit ?? product.target_price_unit,
+    preferred_store: householdProduct.preferred_store ?? product.preferred_store,
+    is_freezable: householdProduct.is_freezable ?? product.is_freezable,
+    notes: householdProduct.notes ?? product.notes
+  };
+}
+
+async function ensureHouseholdProduct(
+  householdId: string,
+  productId: string,
+  settings: HouseholdProductSettings = {}
+) {
+  const supabase = getSupabaseAdmin();
+  const payload = householdProductPayload(householdId, productId, settings);
+
+  const existing = await supabase
+    .from("household_products")
+    .select("id, is_basis, desired_stock, target_price, target_price_unit, preferred_store, is_freezable, notes")
+    .eq("household_id", householdId)
+    .eq("product_id", productId)
+    .limit(1);
+
+  if (existing.error) throw existing.error;
+
+  const existingRow = existing.data?.[0] ?? null;
+  const result = existingRow
+    ? await supabase.from("household_products").update(payload).eq("id", existingRow.id).select("*").single()
+    : await supabase.from("household_products").insert(payload).select("*").single();
+
+  if (result.error) throw result.error;
+
+  return {
+    data: result.data,
+    madeBasis: !existingRow || existingRow.is_basis === false
+  };
+}
+
 function defaultLocation(product: { category?: string | null; name?: string | null }) {
   const text = `${product.category ?? ""} ${product.name ?? ""}`.toLowerCase();
   if (text.includes("melk") || text.includes("yoghurt") || text.includes("ost") || text.includes("kjøtt") || text.includes("fisk")) {
@@ -220,6 +310,10 @@ async function insertReceiptPriceObservation(
 
   const { error } = await supabase.from("price_observations").insert({
     product_id: product.id,
+    household_id: householdId,
+    observed_by_household_id: householdId,
+    scope: "global",
+    visibility: "public",
     store_code: store.storeKey || normalizeStoreCode(storeName),
     store_name: storeName,
     price: Number(best.line.price),
@@ -306,7 +400,7 @@ async function refreshProductPrices(productId: string, ean: string) {
   const { selected, related } = await fetchKassalappProductWithPrices(ean);
   if (!selected) return { inserted: 0, found: false };
 
-  const priceResult = await insertPriceObservations(productId, selected, related, "mobile-scan");
+  const priceResult = await insertPriceObservations(productId, selected, related, "kassalapp-mobile-scan");
   return { inserted: priceResult.inserted, found: true };
 }
 
@@ -315,8 +409,7 @@ async function findOrCreateProduct(ean: string, householdId: string, options?: {
 
   const existing = await supabase
     .from("products")
-    .select("id, name, brand, ean, category, package_size, image_url, desired_stock, is_basis")
-    .eq("household_id", householdId)
+    .select("id, name, brand, ean, category, package_size, image_url, desired_stock, target_price, target_price_unit, preferred_store, is_basis, is_freezable, notes")
     .eq("ean", ean)
     .order("created_at", { ascending: true })
     .limit(1)
@@ -325,26 +418,27 @@ async function findOrCreateProduct(ean: string, householdId: string, options?: {
   if (existing.error) throw existing.error;
 
   if (existing.data) {
-    let product = existing.data;
+    let product = existing.data as MobileProductRow;
 
     if (!product.is_basis) {
       const basisUpdate = await supabase
         .from("products")
         .update({ is_basis: true })
         .eq("id", product.id)
-        .select("id, name, brand, ean, category, package_size, image_url, desired_stock, is_basis")
+        .select("id, name, brand, ean, category, package_size, image_url, desired_stock, target_price, target_price_unit, preferred_store, is_basis, is_freezable, notes")
         .single();
 
       if (basisUpdate.error) throw basisUpdate.error;
-      product = basisUpdate.data;
+      product = basisUpdate.data as MobileProductRow;
     }
 
+    const householdProduct = await ensureHouseholdProduct(householdId, product.id, product);
     const priceResult = options?.skipKassalappPriceInsert ? { inserted: 0, found: false } : await refreshProductPrices(product.id, ean);
 
     return {
-      product,
+      product: mergeHouseholdProduct(product, householdProduct.data),
       created: false,
-      madeBasis: !existing.data.is_basis,
+      madeBasis: !existing.data.is_basis || householdProduct.madeBasis,
       priceObservationsInserted: priceResult.inserted
     };
   }
@@ -363,17 +457,18 @@ async function findOrCreateProduct(ean: string, householdId: string, options?: {
   const inserted = await supabase
     .from("products")
     .insert(payload)
-    .select("id, name, brand, ean, category, package_size, image_url, desired_stock, is_basis")
+    .select("id, name, brand, ean, category, package_size, image_url, desired_stock, target_price, target_price_unit, preferred_store, is_basis, is_freezable, notes")
     .single();
 
   if (inserted.error) throw inserted.error;
 
+  const householdProduct = await ensureHouseholdProduct(householdId, inserted.data.id, inserted.data);
   const priceResult = options?.skipKassalappPriceInsert
     ? { inserted: 0 }
-    : await insertPriceObservations(inserted.data.id, selected, related, "mobile-scan");
+    : await insertPriceObservations(inserted.data.id, selected, related, "kassalapp-mobile-scan");
 
   return {
-    product: inserted.data,
+    product: mergeHouseholdProduct(inserted.data, householdProduct.data),
     created: true,
     madeBasis: true,
     priceObservationsInserted: priceResult.inserted
