@@ -13,6 +13,13 @@ type ProductRow = {
   image_url: string | null;
 };
 
+type HouseholdProductRow = {
+  product_id: string;
+  desired_stock: number | null;
+  target_price: number | null;
+  preferred_store: string | null;
+};
+
 type InventoryRow = {
   product_id: string | null;
   quantity: number | null;
@@ -36,6 +43,7 @@ type ProductComparison = {
   currentQuantity: number;
   targetPrice: number | null;
   lowestStore: string | null;
+  lowestStoreKey: string | null;
   lowestPrice: number | null;
   highestPrice: number | null;
   saving: number | null;
@@ -97,22 +105,68 @@ function observationKey(observation: PriceObservationRow) {
   return `${observation.product_id}:${storeKey(observation)}`;
 }
 
+async function loadLegacyBasisProducts(supabase: ReturnType<typeof getSupabaseAdmin>, householdId: string) {
+  const { data, error } = await supabase
+    .from("products")
+    .select("id, name, brand, package_size, target_price, desired_stock, preferred_store, image_url")
+    .eq("household_id", householdId)
+    .eq("is_basis", true)
+    .order("name", { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []) as ProductRow[];
+}
+
+async function loadBasisProducts(supabase: ReturnType<typeof getSupabaseAdmin>, householdId: string) {
+  const { data: householdProductsData, error: householdProductsError } = await supabase
+    .from("household_products")
+    .select("product_id, desired_stock, target_price, preferred_store")
+    .eq("household_id", householdId)
+    .eq("is_basis", true);
+
+  if (householdProductsError) {
+    console.warn("[api/dashboard/basis-prices] household_products lookup failed, falling back to products.is_basis", householdProductsError.message);
+    return loadLegacyBasisProducts(supabase, householdId);
+  }
+
+  const householdProducts = ((householdProductsData ?? []) as HouseholdProductRow[]).filter((item) => item.product_id);
+
+  if (!householdProducts.length) {
+    return loadLegacyBasisProducts(supabase, householdId);
+  }
+
+  const householdProductByProductId = new Map(householdProducts.map((item) => [item.product_id, item]));
+  const productIds = householdProducts.map((item) => item.product_id);
+
+  const { data: productsData, error: productsError } = await supabase
+    .from("products")
+    .select("id, name, brand, package_size, target_price, desired_stock, preferred_store, image_url")
+    .in("id", productIds)
+    .order("name", { ascending: true });
+
+  if (productsError) throw productsError;
+
+  const products = ((productsData ?? []) as ProductRow[]).map((product) => {
+    const householdProduct = householdProductByProductId.get(product.id);
+
+    return {
+      ...product,
+      target_price: householdProduct?.target_price ?? product.target_price,
+      desired_stock: householdProduct?.desired_stock ?? product.desired_stock,
+      preferred_store: householdProduct?.preferred_store ?? product.preferred_store
+    };
+  });
+
+  return products.length ? products : loadLegacyBasisProducts(supabase, householdId);
+}
+
 export async function GET(request: Request) {
   try {
     const supabase = getSupabaseAdmin();
     const { householdId } = await requireCurrentHousehold(request);
     const now = new Date();
 
-    const { data: productsData, error: productsError } = await supabase
-      .from("products")
-      .select("id, name, brand, package_size, target_price, desired_stock, preferred_store, image_url")
-      .eq("household_id", householdId)
-      .eq("is_basis", true)
-      .order("name", { ascending: true });
-
-    if (productsError) throw productsError;
-
-    const products = (productsData ?? []) as ProductRow[];
+    const products = await loadBasisProducts(supabase, householdId);
     const productIds = products.map((product) => product.id);
 
     if (!productIds.length) {
@@ -246,16 +300,16 @@ export async function GET(request: Request) {
 
       for (const observation of observations) {
         const preference = preferenceFor(observation);
-        const storeName = preference.store_name || observation.store_name;
+        const key = storeKey(observation);
         const freshness = priceFreshness(observation.observed_at, now);
         if (!freshness) continue;
 
-        storePrices[storeName] = toNumber(observation.price);
-        storePriceAgeDays[storeName] = priceAgeDays(observation.observed_at, now);
-        storePriceFreshness[storeName] = freshness;
+        storePrices[key] = toNumber(observation.price);
+        storePriceAgeDays[key] = priceAgeDays(observation.observed_at, now);
+        storePriceFreshness[key] = freshness;
 
         if (freshness === "fresh") {
-          freshStorePrices[storeName] = toNumber(observation.price);
+          freshStorePrices[key] = toNumber(observation.price);
         }
       }
 
@@ -267,6 +321,7 @@ export async function GET(request: Request) {
         currentQuantity,
         targetPrice: product.target_price,
         lowestStore: lowest ? (preferenceFor(lowest).store_name || lowest.store_name) : null,
+        lowestStoreKey: lowest ? storeKey(lowest) : null,
         lowestPrice: lowest ? toNumber(lowest.price) : null,
         highestPrice: highest ? toNumber(highest.price) : null,
         saving: lowest && highest ? Math.max(0, toNumber(highest.price) - toNumber(lowest.price)) : null,
@@ -283,7 +338,7 @@ export async function GET(request: Request) {
       let matchedProducts = 0;
 
       for (const product of productComparisons) {
-        const price = product.freshStorePrices[meta.store];
+        const price = product.freshStorePrices[key];
         if (price === undefined) continue;
         total += price * product.desiredQuantity;
         matchedProducts += 1;

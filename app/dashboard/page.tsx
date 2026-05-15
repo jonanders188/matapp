@@ -14,6 +14,7 @@ type ProductComparison = {
   currentQuantity: number;
   targetPrice: number | null;
   lowestStore: string | null;
+  lowestStoreKey: string | null;
   lowestPrice: number | null;
   highestPrice: number | null;
   saving: number | null;
@@ -23,6 +24,7 @@ type ProductComparison = {
 
 type StoreComparison = {
   store: string;
+  storeKey?: string;
   total: number;
   matchedProducts: number;
   productCount: number;
@@ -196,7 +198,7 @@ export default function DashboardPage() {
 
           <div className="space-y-3">
             {data.stores.slice(0, 6).map((store, index) => (
-              <div key={`${store.store}-${index}`} className="flex items-center justify-between rounded-2xl border border-line p-4">
+              <div key={store.storeKey} className="flex items-center justify-between rounded-2xl border border-line p-4">
                 <div>
                   <p className="font-semibold">{index + 1}. {store.store}</p>
                   <p className="text-sm text-muted">{store.matchedProducts}/{store.productCount} varer · {store.coveragePct}% dekning</p>
