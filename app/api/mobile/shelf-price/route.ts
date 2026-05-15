@@ -7,6 +7,7 @@ import {
   productMetadataPayload,
   type KassalappProduct
 } from "@/lib/kassalapp";
+import { canonicalStoreIdentity, normalizeStoreCode as normalizeKnownStoreCode } from "@/lib/price-observations";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
 
 type ShelfPriceRequest = {
@@ -129,7 +130,7 @@ async function ensureHouseholdProduct(
 }
 
 function normalizeStoreKey(value: unknown) {
-  return String(value ?? "").trim().toLowerCase();
+  return normalizeKnownStoreCode(value);
 }
 
 async function getSavedStore(householdId: string, storeKey: string) {
@@ -237,14 +238,15 @@ export async function POST(request: Request) {
     }
 
     const supabase = getSupabaseAdmin();
+    const storeIdentity = canonicalStoreIdentity(store.store_key, store.store_name);
     const { error } = await supabase.from("price_observations").insert({
       product_id: productResult.product.id,
       household_id: householdId,
       observed_by_household_id: householdId,
       scope: "global",
       visibility: "public",
-      store_code: store.store_key,
-      store_name: store.store_name,
+      store_code: storeIdentity.store_code,
+      store_name: storeIdentity.store_name,
       price,
       unit_price: null,
       observed_at: new Date().toISOString(),
@@ -265,8 +267,8 @@ export async function POST(request: Request) {
       data: {
         ean,
         price,
-        storeKey: store.store_key,
-        storeName: store.store_name,
+        storeKey: storeIdentity.store_code,
+        storeName: storeIdentity.store_name,
         product: productResult.product,
         createdProduct: productResult.created
       }

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { findKassalappProductsByEan, latestPriceDate, lookupKassalappProductsWithPricesByEan, normalizeCategory, packageSize, productMetadataPayload, searchKassalappProducts, type KassalappProduct } from "@/lib/kassalapp";
 import { apiErrorResponse, requireCurrentHousehold } from "@/lib/current-household";
-import { insertPriceObservations } from "@/lib/price-observations";
+import { canonicalStoreIdentity, insertPriceObservations } from "@/lib/price-observations";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
 
 type ScanMode = "in" | "out";
@@ -305,6 +305,7 @@ async function insertReceiptPriceObservation(
   if (!store) return null;
 
   const storeName = store.storeName;
+  const storeIdentity = canonicalStoreIdentity(store.storeKey, storeName);
   const observedAt = receipt?.observedAt && Number.isFinite(Date.parse(receipt.observedAt)) ? receipt.observedAt : new Date().toISOString();
   const supabase = getSupabaseAdmin();
 
@@ -314,8 +315,8 @@ async function insertReceiptPriceObservation(
     observed_by_household_id: householdId,
     scope: "global",
     visibility: "public",
-    store_code: store.storeKey || normalizeStoreCode(storeName),
-    store_name: storeName,
+    store_code: storeIdentity.store_code,
+    store_name: storeIdentity.store_name,
     price: Number(best.line.price),
     unit_price: null,
     observed_at: observedAt,

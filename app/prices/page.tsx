@@ -34,6 +34,14 @@ type StoreComparison = {
   productCount: number;
   coveragePct: number;
   missingProducts: number;
+  pairwiseWins: number;
+  pairwiseLosses: number;
+  pairwiseTies: number;
+  pairwiseScore: number;
+  comparableStoreCount: number;
+  comparableProductPairs: number;
+  averagePairwiseAdvantagePct: number;
+  priceIndex: number | null;
 };
 
 type BasisPriceData = {
@@ -244,14 +252,35 @@ export default function PricesPage() {
 
           <section className="card p-5">
             <h2 className="font-semibold">Butikkrangering</h2>
+            <p className="section-subtitle">Billigst øverst. Hver butikk sammenlignes parvis mot andre butikker på varer der begge har gyldig 14-dagers pris.</p>
             <div className="mt-4 space-y-3 text-sm">
-              {data.stores.slice(0, 6).map((store, index) => (
-                <div key={store.storeKey} className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between rounded-xl bg-slate-50 p-3">
-                  <div>
-                    <p className="font-semibold">{index + 1}. {store.store}</p>
-                    <p className="text-muted">{store.coveragePct}% dekning · mangler {store.missingProducts}</p>
+              {data.stores.slice(0, 8).map((store, index) => (
+                <div key={store.storeKey} className="rounded-xl bg-slate-50 p-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="font-semibold">{index + 1}. {store.store}</p>
+                      <p className="text-muted">
+                        {store.pairwiseWins}-{store.pairwiseLosses}
+                        {store.pairwiseTies ? `-${store.pairwiseTies}` : ""} mot andre butikker · {store.matchedProducts}/{store.productCount} varer
+                      </p>
+                    </div>
+                    <div className="text-left sm:text-right">
+                      <p className="font-bold">{store.priceIndex ? `${store.priceIndex.toFixed(1)} indeks` : kr(store.total)}</p>
+                      <p className={store.averagePairwiseAdvantagePct >= 0 ? "text-xs text-brand" : "text-xs text-muted"}>
+                        {store.averagePairwiseAdvantagePct >= 0 ? "" : "+"}
+                        {(-store.averagePairwiseAdvantagePct).toFixed(1)}% mot snittet
+                      </p>
+                    </div>
                   </div>
-                  <p className="font-bold">{kr(store.total)}</p>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
+                    <div
+                      className="h-full rounded-full bg-brand"
+                      style={{ width: `${Math.min(100, Math.max(4, store.coveragePct))}%` }}
+                    />
+                  </div>
+                  <p className="mt-2 text-xs text-muted">
+                    {store.coveragePct}% dekning · {store.comparableProductPairs} parvise varesammenligninger
+                  </p>
                 </div>
               ))}
               {!data.stores.length && !loading ? <p className="text-muted">Ingen butikkpriser funnet.</p> : null}
@@ -261,7 +290,7 @@ export default function PricesPage() {
           <section className="card p-5">
             <h2 className="font-semibold">Hva sammenlignes?</h2>
             <p className="mt-3 text-sm text-muted">
-              Prissammenligningen bruker bare produkter som ligger i basisutvalget. Fjern varer fra basisutvalget hvis de ikke skal påvirke billigste butikk, anbefalinger eller handleliste. Priser eldre enn 30 dager skjules, og priser mellom 15 og 30 dager vises bare som gammel fallback.
+              Prissammenligningen bruker bare produkter som ligger i basisutvalget. Butikkrangeringen bruker kun gyldige 14-dagers priser og sammenligner butikkene parvis på varer der begge har pris. Priser mellom 15 og 30 dager vises bare som gammel fallback i produkttabellen, men teller ikke i rangeringen.
             </p>
             <Link href="/products" className="mt-4 inline-flex rounded-xl border border-line px-4 py-2 text-sm font-medium text-brand">
               Administrer basisutvalg

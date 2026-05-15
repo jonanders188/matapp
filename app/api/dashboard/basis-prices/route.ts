@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { apiErrorResponse, requireCurrentHousehold } from "@/lib/current-household";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
+import { canonicalStoreName, normalizeStoreCode } from "@/lib/price-observations";
 
 type ProductRow = {
   id: string;
@@ -86,6 +87,14 @@ type StoreComparison = {
   productCount: number;
   coveragePct: number;
   missingProducts: number;
+  pairwiseWins: number;
+  pairwiseLosses: number;
+  pairwiseTies: number;
+  pairwiseScore: number;
+  comparableStoreCount: number;
+  comparableProductPairs: number;
+  averagePairwiseAdvantagePct: number;
+  priceIndex: number | null;
 };
 
 const PRICE_FRESH_DAYS = 14;
@@ -113,7 +122,7 @@ function toNumber(value: unknown, fallback = 0) {
 }
 
 function storeKey(observation: Pick<PriceObservationRow, "store_code" | "store_name">) {
-  return String(observation.store_code || observation.store_name).trim().toLowerCase();
+  return normalizeStoreCode(observation.store_code || observation.store_name);
 }
 
 function observationKey(observation: PriceObservationRow) {
@@ -319,9 +328,12 @@ export async function GET(request: Request) {
 
     const storePreferences = new Map<string, StorePreferenceRow>();
     for (const preference of (storePreferencesData ?? []) as StorePreferenceRow[]) {
-      storePreferences.set(String(preference.store_key).trim().toLowerCase(), {
+      const key = normalizeStoreCode(preference.store_key || preference.store_name);
+      if (!key) continue;
+      storePreferences.set(key, {
         ...preference,
-        store_key: String(preference.store_key).trim().toLowerCase()
+        store_key: key,
+        store_name: canonicalStoreName(key, preference.store_name)
       });
     }
 
@@ -329,7 +341,7 @@ export async function GET(request: Request) {
       const key = storeKey(observation);
       return storePreferences.get(key) ?? {
         store_key: key,
-        store_name: observation.store_name,
+        store_name: canonicalStoreName(key, observation.store_name),
         priority: 100,
         is_enabled: true
       };
@@ -376,7 +388,7 @@ export async function GET(request: Request) {
       rows.push(observation);
       pricesByProduct.set(observation.product_id, rows);
       allStores.set(key, {
-        store: preference.store_name || observation.store_name,
+        store: canonicalStoreName(key, preference.store_name || observation.store_name),
         priority: toNumber(preference.priority, 100),
         isEnabled: Boolean(preference.is_enabled ?? true)
       });
@@ -429,7 +441,7 @@ export async function GET(request: Request) {
         desiredQuantity,
         currentQuantity,
         targetPrice: product.target_price,
-        lowestStore: lowest ? (preferenceFor(lowest).store_name || lowest.store_name) : null,
+        lowestStore: lowest ? canonicalStoreName(storeKey(lowest), preferenceFor(lowest).store_name || lowest.store_name) : null,
         lowestStoreKey: lowest ? storeKey(lowest) : null,
         lowestPrice: lowest ? toNumber(lowest.price) : null,
         highestPrice: highest ? toNumber(highest.price) : null,
@@ -442,21 +454,35 @@ export async function GET(request: Request) {
       };
     });
 
-    const storeComparisons: StoreComparison[] = [...allStores.entries()].map(([key, meta]) => {
+    const storeStats = new Map<string, StoreComparison>();
+
+    for (const [key, meta] of allStores.entries()) {
       let total = 0;
       let matchedProducts = 0;
+      let priceIndexSum = 0;
+      let priceIndexSamples = 0;
 
       for (const product of productComparisons) {
         const price = product.freshStorePrices[key];
         if (price === undefined) continue;
+
         total += price * product.desiredQuantity;
         matchedProducts += 1;
+
+        const freshPrices = Object.values(product.freshStorePrices).filter((value) => Number.isFinite(value));
+        if (freshPrices.length >= 2) {
+          const average = freshPrices.reduce((sum, value) => sum + value, 0) / freshPrices.length;
+          if (average > 0) {
+            priceIndexSum += (price / average) * 100;
+            priceIndexSamples += 1;
+          }
+        }
       }
 
       const productCount = productComparisons.length;
       const coveragePct = productCount > 0 ? Math.round((matchedProducts / productCount) * 100) : 0;
 
-      return {
+      storeStats.set(key, {
         store: meta.store,
         storeKey: key,
         priority: meta.priority,
@@ -465,14 +491,98 @@ export async function GET(request: Request) {
         matchedProducts,
         productCount,
         coveragePct,
-        missingProducts: productCount - matchedProducts
-      };
-    }).sort((a, b) => {
+        missingProducts: productCount - matchedProducts,
+        pairwiseWins: 0,
+        pairwiseLosses: 0,
+        pairwiseTies: 0,
+        pairwiseScore: 0,
+        comparableStoreCount: 0,
+        comparableProductPairs: 0,
+        averagePairwiseAdvantagePct: 0,
+        priceIndex: priceIndexSamples ? priceIndexSum / priceIndexSamples : null
+      });
+    }
+
+    const pairwiseAdvantagePct = new Map<string, number>();
+    const storeKeys = [...storeStats.keys()];
+
+    for (let i = 0; i < storeKeys.length; i += 1) {
+      for (let j = i + 1; j < storeKeys.length; j += 1) {
+        const aKey = storeKeys[i];
+        const bKey = storeKeys[j];
+        const a = storeStats.get(aKey);
+        const b = storeStats.get(bKey);
+        if (!a || !b) continue;
+
+        let aTotal = 0;
+        let bTotal = 0;
+        let sharedProducts = 0;
+
+        for (const product of productComparisons) {
+          const aPrice = product.freshStorePrices[aKey];
+          const bPrice = product.freshStorePrices[bKey];
+          if (aPrice === undefined || bPrice === undefined) continue;
+
+          aTotal += aPrice * product.desiredQuantity;
+          bTotal += bPrice * product.desiredQuantity;
+          sharedProducts += 1;
+        }
+
+        if (!sharedProducts) continue;
+
+        a.comparableStoreCount += 1;
+        b.comparableStoreCount += 1;
+        a.comparableProductPairs += sharedProducts;
+        b.comparableProductPairs += sharedProducts;
+
+        const averageTotal = (aTotal + bTotal) / 2;
+        const signedAdvantageForA = averageTotal > 0 ? ((bTotal - aTotal) / averageTotal) * 100 : 0;
+        pairwiseAdvantagePct.set(aKey, (pairwiseAdvantagePct.get(aKey) ?? 0) + signedAdvantageForA);
+        pairwiseAdvantagePct.set(bKey, (pairwiseAdvantagePct.get(bKey) ?? 0) - signedAdvantageForA);
+
+        const diff = aTotal - bTotal;
+        if (Math.abs(diff) < 0.01) {
+          a.pairwiseTies += 1;
+          b.pairwiseTies += 1;
+          a.pairwiseScore += 0.5;
+          b.pairwiseScore += 0.5;
+        } else if (diff < 0) {
+          a.pairwiseWins += 1;
+          b.pairwiseLosses += 1;
+          a.pairwiseScore += 1;
+        } else {
+          b.pairwiseWins += 1;
+          a.pairwiseLosses += 1;
+          b.pairwiseScore += 1;
+        }
+      }
+    }
+
+    const storeComparisons: StoreComparison[] = [...storeStats.values()].map((store) => ({
+      ...store,
+      averagePairwiseAdvantagePct: store.comparableStoreCount
+        ? (pairwiseAdvantagePct.get(store.storeKey) ?? 0) / store.comparableStoreCount
+        : 0
+    })).sort((a, b) => {
+      const scoreDiff = b.pairwiseScore - a.pairwiseScore;
+      if (scoreDiff !== 0) return scoreDiff;
+
+      const advantageDiff = b.averagePairwiseAdvantagePct - a.averagePairwiseAdvantagePct;
+      if (Math.abs(advantageDiff) >= 0.01) return advantageDiff;
+
+      const indexA = a.priceIndex ?? Number.POSITIVE_INFINITY;
+      const indexB = b.priceIndex ?? Number.POSITIVE_INFINITY;
+      const indexDiff = indexA - indexB;
+      if (Math.abs(indexDiff) >= 0.01) return indexDiff;
+
       if (b.matchedProducts !== a.matchedProducts) return b.matchedProducts - a.matchedProducts;
+
       const totalDiff = a.total - b.total;
       if (totalDiff !== 0) return totalDiff;
+
       const priorityDiff = a.priority - b.priority;
       if (priorityDiff !== 0) return priorityDiff;
+
       return a.store.localeCompare(b.store, "nb");
     });
 

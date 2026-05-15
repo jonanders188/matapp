@@ -26,17 +26,54 @@ const STORE_NAMES: Record<string, string> = {
   engrossnett_no: "Engrosnett"
 };
 
+const STORE_ALIASES: Record<string, string> = {
+  kiwi: "kiwi",
+  rema: "rema_1000",
+  rema1000: "rema_1000",
+  rema_1000: "rema_1000",
+  "rema-1000": "rema_1000",
+  meny: "meny_no",
+  meny_no: "meny_no",
+  coop: "coop_no",
+  coop_no: "coop_no",
+  oda: "oda_no",
+  oda_no: "oda_no",
+  spar: "spar_no",
+  spar_no: "spar_no",
+  joker: "joker_no",
+  joker_no: "joker_no",
+  europris: "europris_no",
+  europris_no: "europris_no",
+  bunnpris: "bunnpris",
+  engrosnett: "engrossnett_no",
+  engrossnett: "engrossnett_no",
+  engrossnett_no: "engrossnett_no"
+};
+
 export function normalizeStoreCode(value: unknown) {
-  return String(value ?? "")
+  const raw = String(value ?? "")
     .trim()
     .toLowerCase()
     .replace(/\s+/g, "_");
+
+  if (!raw) return "";
+
+  const compact = raw.replace(/[^a-z0-9]+/g, "");
+  return STORE_ALIASES[raw] ?? STORE_ALIASES[compact] ?? raw;
 }
 
 export function canonicalStoreName(storeCode: unknown, fallback: unknown) {
-  const normalized = normalizeStoreCode(storeCode);
+  const normalized = normalizeStoreCode(storeCode || fallback);
   const fallbackName = String(fallback ?? storeCode ?? "Ukjent butikk").trim();
   return STORE_NAMES[normalized] ?? fallbackName;
+}
+
+export function canonicalStoreIdentity(storeCode: unknown, storeName: unknown) {
+  const code = normalizeStoreCode(storeCode || storeName);
+  return {
+    store_code: code,
+    store_name: canonicalStoreName(code, storeName || storeCode)
+  };
 }
 
 function candidateKey(product: KassalappProduct) {
