@@ -112,22 +112,11 @@ export async function GET(request: Request) {
     const current = await requireCurrentHousehold(request);
     requireAdminRole(current.role);
 
-    console.log("[api/admin/stores] GET isolated read-only");
+    const stores = await loadStores(current.householdId);
 
-    return NextResponse.json({
-      data: {
-        stores: STANDARD_STORES.map((store) => ({
-          id: null,
-          store_key: normalizeStoreKey(store.store_key),
-          store_name: store.store_name,
-          priority: store.priority,
-          is_enabled: store.is_enabled,
-          updated_at: null
-        }))
-      }
-    });
+    return NextResponse.json({ data: { stores } });
   } catch (error) {
-    console.error("[api/admin/stores] GET isolated error", error);
+    console.error("[api/admin/stores] GET", error);
     return apiErrorResponse(error);
   }
 }
@@ -164,13 +153,12 @@ export async function PATCH(request: Request) {
 
     const { data: existingRows, error: existingError } = await supabase
       .from("household_store_preferences")
-      .select("id")
-      .eq("household_id", current.householdId)
-      .ilike("store_key", storeKeyValue);
+      .select("id, store_key")
+      .eq("household_id", current.householdId);
 
     if (existingError) throw existingError;
 
-    const existing = existingRows?.[0];
+    const existing = existingRows?.find((row) => normalizeStoreKey(row.store_key) === storeKeyValue);
 
     const result = existing?.id
       ? await supabase
