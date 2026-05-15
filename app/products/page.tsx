@@ -118,6 +118,30 @@ export default function ProductsPage() {
     }
   }
 
+  async function enrichBasisProducts() {
+    setError(null);
+    setMessage(null);
+    setActionLoading("enrich-basis");
+
+    try {
+      const response = await authFetch("/api/products/enrich-basis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ limit: 10 })
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.error ?? "Beriking feilet");
+
+      const errors = Array.isArray(payload?.errors) && payload.errors.length ? ` ${payload.errors.length} feil.` : "";
+      setMessage(`Open Food Facts: forsøkte ${payload?.attempted ?? 0}, fant ${payload?.found ?? 0}, oppdaterte ${payload?.updated ?? 0}. Hoppet over ${payload?.skippedAlreadyComplete ?? 0} komplette og ${payload?.skippedNoEan ?? 0} uten EAN.${errors}`);
+      await loadSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Beriking feilet");
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
   async function setBasisProduct(product: SavedProduct, isBasis: boolean) {
     setError(null);
     setMessage(null);
@@ -171,6 +195,13 @@ export default function ProductsPage() {
         <div className="flex gap-2">
           <a href="/api/health" className="rounded-xl border border-line px-4 py-2 text-sm font-medium text-brand">Sjekk API-status</a>
           <a href="/recommendations" className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700">Anbefalinger</a>
+          <button
+            onClick={enrichBasisProducts}
+            disabled={Boolean(actionLoading) || !basisProducts.length}
+            className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-brand disabled:opacity-60"
+          >
+            {actionLoading === "enrich-basis" ? "Beriker..." : "Berik basisprodukter"}
+          </button>
           <button
             onClick={syncBasisPrices}
             disabled={Boolean(actionLoading) || !saved.length}

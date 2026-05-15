@@ -155,6 +155,42 @@ function openFoodFactsImages(product: Product) {
   });
 }
 
+
+function missingFoodInfoLabels(product: Product) {
+  const missing: string[] = [];
+
+  if (!product.image_url) missing.push("bilde");
+  if (!product.ingredients) missing.push("ingredienser");
+  if (!shortJson(product.allergens)) missing.push("allergener");
+  if (!shortJson(product.nutrition)) missing.push("næring");
+  if (!shortJson(product.labels)) missing.push("merking");
+  if (!product.category_path?.length) missing.push("kategori");
+
+  return missing;
+}
+
+function sourceFieldList(product: Product, source: "kassalapp" | "openfoodfacts") {
+  const fields = nestedRecord(sourceSummary(product, source), "fields");
+  if (!fields) return null;
+
+  const labels: Record<string, string> = {
+    name: "navn",
+    brand: "merke",
+    image_url: "bilde",
+    ingredients: "ingredienser",
+    allergens: "allergener",
+    nutrition: "næring",
+    labels: "merking",
+    category_path: "kategori"
+  };
+
+  const active = Object.entries(fields)
+    .filter(([, value]) => Boolean(value))
+    .map(([key]) => labels[key] ?? key);
+
+  return active.length ? active.join(", ") : null;
+}
+
 function mergedFieldSource(product: Product, field: "ingredients" | "allergens" | "nutrition" | "labels" | "category_path" | "image_url") {
   const offSummary = sourceSummary(product, "openfoodfacts");
   const offFields = nestedRecord(offSummary, "fields");
@@ -367,6 +403,17 @@ export default function ProductRulesPage() {
                   {shortJson(data.product.labels) ? (
                     <div><p className="text-xs uppercase tracking-wide text-muted">Merking · {mergedFieldSource(data.product, "labels")}</p><p>{shortJson(data.product.labels)}</p></div>
                   ) : null}
+                  {missingFoodInfoLabels(data.product).length ? (
+                    <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 text-xs text-amber-800">
+                      <p className="font-semibold">Mangler fortsatt: {missingFoodInfoLabels(data.product).join(", ")}</p>
+                      <p className="mt-1">Open Food Facts er brukergenerert. Kontroller alltid emballasjen ved allergi.</p>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-xs text-brand">
+                      Viktige matvarefelt er fylt ut. Kontroller likevel emballasjen ved allergi.
+                    </div>
+                  )}
+
                   {!data.product.description && !data.product.ingredients && !data.product.allergens && !data.product.nutrition && !data.product.labels && !data.product.category_path?.length ? (
                     <p className="text-muted">Ingen ekstra matvareinformasjon lagret ennå. Trykk Berik fra Open Food Facts eller Synk pris for produkt.</p>
                   ) : null}
@@ -390,7 +437,7 @@ export default function ProductRulesPage() {
                     </div>
                     <dl className="mt-3 space-y-2 text-xs">
                       <div><dt className="font-semibold text-slate-500">Sist hentet</dt><dd>{sourceFetchedAt(data.product, "kassalapp")}</dd></div>
-                      <div><dt className="font-semibold text-slate-500">Innhold</dt><dd>{data.product.kassalapp_raw ? "Produktnavn, merke, bilde, kategori og/eller prisdata" : "Ikke registrert på produktet"}</dd></div>
+                      <div><dt className="font-semibold text-slate-500">Felter</dt><dd>{sourceFieldList(data.product, "kassalapp") ?? (data.product.kassalapp_raw ? "Produktnavn, merke, bilde, kategori og/eller prisdata" : "Ikke registrert på produktet")}</dd></div>
                     </dl>
                   </div>
 
@@ -406,6 +453,7 @@ export default function ProductRulesPage() {
                     </div>
                     <dl className="mt-3 space-y-2 text-xs">
                       <div><dt className="font-semibold text-slate-500">Sist hentet</dt><dd>{sourceFetchedAt(data.product, "openfoodfacts")}</dd></div>
+                      <div><dt className="font-semibold text-slate-500">Felter</dt><dd>{sourceFieldList(data.product, "openfoodfacts") ?? "Ikke registrert"}</dd></div>
                       <div><dt className="font-semibold text-slate-500">Datakvalitet</dt><dd>{shortJson(sourceQuality(data.product, "openfoodfacts")) ?? "Ikke registrert"}</dd></div>
                     </dl>
                     {openFoodFactsImages(data.product).length ? (
