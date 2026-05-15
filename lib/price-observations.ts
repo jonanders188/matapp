@@ -1,0 +1,101 @@
+import { latestPriceDate, type KassalappProduct } from "@/lib/kassalapp";
+import { getSupabaseAdmin } from "@/lib/supabase-server";
+
+type PriceObservationInput = {
+  product_id: string;
+  store_code: string;
+  store_name: string;
+  price: number;
+  unit_price: number | null;
+  observed_at: string;
+  source: string;
+  source_url: string | null;
+  raw: KassalappProduct;
+};
+
+function candidateKey(product: KassalappProduct) {
+  return `${product.store?.code || product.store?.name || "unknown"}`.trim();
+}
+
+function observedAt(product: KassalappProduct) {
+  return latestPriceDate(product) ?? new Date().toISOString();
+}
+
+function isSameProduct(a: KassalappProduct, b: KassalappProduct) {
+  if (a.ean && b.ean) return a.ean === b.ean;
+  if (a.id && b.id) return a.id === b.id;
+  return a.name.trim().toLowerCase() === b.name.trim().toLowerCase();
+}
+
+function chooseBetterObservation(a: KassalappProduct, b: KassalappProduct) {
+  const aDate = Date.parse(observedAt(a));
+  const bDate = Date.parse(observedAt(b));
+
+  if (Number.isFinite(aDate) && Number.isFinite(bDate) && aDate !== bDate) {
+    return bDate > aDate ? b : a;
+  }
+
+  return Number(b.current_price ?? Number.POSITIVE_INFINITY) < Number(a.current_price ?? Number.POSITIVE_INFINITY)
+    ? b
+    : a;
+}
+
+export function priceProductsForProduct(product: KassalappProduct, relatedProducts: KassalappProduct[] = []) {
+  const candidates = [product, ...relatedProducts]
+    .filter((candidate) => candidate.store)
+    .filter((candidate) => candidate.current_price != null)
+    .filter((candidate) => isSameProduct(product, candidate));
+
+  const byStore = new Map<string, KassalappProduct>();
+
+  for (const candidate of candidates) {
+    const key = candidateKey(candidate);
+    if (!key) continue;
+    const existing = byStore.get(key);
+    byStore.set(key, existing ? chooseBetterObservation(existing, candidate) : candidate);
+  }
+
+  return [...byStore.values()].sort((a, b) => {
+    const aStore = a.store?.name ?? "";
+    const bStore = b.store?.name ?? "";
+    return aStore.localeCompare(bStore, "nb");
+  });
+}
+
+export function priceObservationRows(
+  productId: string,
+  product: KassalappProduct,
+  relatedProducts: KassalappProduct[] = [],
+  source = "kassalapp"
+): PriceObservationInput[] {
+  return priceProductsForProduct(product, relatedProducts).map((candidate) => ({
+    product_id: productId,
+    store_code: candidate.store!.code || candidate.store!.name,
+    store_name: candidate.store!.name,
+    price: candidate.current_price!,
+    unit_price: candidate.current_unit_price ?? null,
+    observed_at: observedAt(candidate),
+    source,
+    source_url: candidate.url ?? null,
+    raw: candidate
+  }));
+}
+
+export async function insertPriceObservations(
+  productId: string,
+  product: KassalappProduct,
+  relatedProducts: KassalappProduct[] = [],
+  source = "kassalapp"
+) {
+  const rows = priceObservationRows(productId, product, relatedProducts, source);
+  if (!rows.length) return { inserted: 0, error: null as string | null };
+
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("price_observations").insert(rows);
+
+  if (error) {
+    return { inserted: 0, error: error.message };
+  }
+
+  return { inserted: rows.length, error: null as string | null };
+}

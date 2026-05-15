@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  background: #f6f7f5;
+  color: #0f172a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.card {
+  @apply rounded-2xl border border-line bg-white shadow-soft;
+}
+
+.pill {
+  @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium;
+}
