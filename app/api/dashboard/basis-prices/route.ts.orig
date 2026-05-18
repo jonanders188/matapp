@@ -3,9 +3,6 @@ import { apiErrorResponse, requireCurrentHousehold } from "@/lib/current-househo
 import { getSupabaseAdmin } from "@/lib/supabase-server";
 import { canonicalStoreName, normalizeStoreCode } from "@/lib/price-observations";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
 type ProductRow = {
   id: string;
   name: string;

@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { apiErrorResponse, requireCurrentHousehold } from "@/lib/current-household";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type StorePreference = {
   id?: string | null;
   household_id?: string;

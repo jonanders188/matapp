@@ -11,9 +11,6 @@ import { canonicalStoreIdentity, normalizeStoreCode as normalizeKnownStoreCode }
 import { getSupabaseAdmin } from "@/lib/supabase-server";
 import { findCanonicalProductByEan, insertProductWithoutDuplicate, PRODUCT_IDENTITY_SELECT } from "@/lib/product-identity";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
 type ShelfPriceRequest = {
   ean?: string;
   price?: number;

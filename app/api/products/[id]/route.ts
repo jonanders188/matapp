@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
 import { apiErrorResponse, requireCurrentHousehold } from "@/lib/current-household";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type ApiErrorLike = {
   message?: string;
   code?: string;

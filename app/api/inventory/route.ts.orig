@@ -3,9 +3,6 @@ import { apiErrorResponse, requireCurrentHousehold } from "@/lib/current-househo
 import { canonicalStoreName, normalizeStoreCode } from "@/lib/price-observations";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
 type ApiErrorLike = {
   message?: string;
   code?: string;

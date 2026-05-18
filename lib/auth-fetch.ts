@@ -12,8 +12,13 @@ export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}
     headers.set("Authorization", `Bearer ${data.session.access_token}`);
   }
 
+  if (!headers.has("Cache-Control")) {
+    headers.set("Cache-Control", "no-cache");
+  }
+
   return fetch(input, {
     ...init,
+    cache: init.cache ?? "no-store",
     headers
   });
 }

@@ -5,9 +5,6 @@ import { canonicalStoreIdentity, insertPriceObservations } from "@/lib/price-obs
 import { getSupabaseAdmin } from "@/lib/supabase-server";
 import { findCanonicalProductByEan, insertProductWithoutDuplicate, PRODUCT_IDENTITY_SELECT } from "@/lib/product-identity";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
 type ScanMode = "in" | "out";
 
 type ReceiptLineInput = {

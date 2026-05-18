@@ -6,6 +6,9 @@ import { lookupKassalappProductsWithPricesByEan, productMetadataPayload, searchK
 import { insertPriceObservations, priceProductsForProduct } from "@/lib/price-observations";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type ProductRow = {
   id: string;
   name: string;
