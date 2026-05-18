@@ -171,7 +171,6 @@ export default function MobileScanPage() {
   const [message, setMessage] = useState("Velg butikk før du starter skanning.");
   const [phase, setPhase] = useState<ScanPhase>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [manualEan, setManualEan] = useState("");
   const [currentEan, setCurrentEan] = useState("");
   const [lookup, setLookup] = useState<QuickLookup | null>(null);
   const [manualPrice, setManualPrice] = useState("");
@@ -182,6 +181,7 @@ export default function MobileScanPage() {
   const selectedStorePrice = lookup?.prices.find((price) => price.storeKey === selectedStoreKey) ?? null;
   const canScan = Boolean(selectedStore);
   const productIsUnsaved = Boolean(lookup?.product && !lookup.existsLocally);
+  const hasResult = Boolean(lookup);
 
   async function loadStores() {
     try {
@@ -259,7 +259,7 @@ export default function MobileScanPage() {
       return;
     }
 
-    const ean = cleanEan(currentEan || lookup?.ean || manualEan);
+    const ean = cleanEan(currentEan || lookup?.ean || "");
     const price = parsePrice(manualPrice);
 
     if (ean.length < 6) {
@@ -277,6 +277,7 @@ export default function MobileScanPage() {
       return;
     }
 
+    beep("scan");
     setBusy(true);
     setPhase("saving");
     setError(null);
@@ -317,6 +318,15 @@ export default function MobileScanPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function resetForNextProduct() {
+    lastScanRef.current = { ean: "", at: 0 };
+    setLookup(null);
+    setCurrentEan("");
+    setManualPrice("");
+    setError(null);
+    setMessage(selectedStore ? "Klar. Skann neste vare." : "Velg butikk før du starter skanning.");
   }
 
   async function startCamera() {
@@ -363,7 +373,7 @@ export default function MobileScanPage() {
       setCameraReady(true);
 
       if (!window.BarcodeDetector) {
-        setCameraError("Denne nettleseren støtter ikke strekkodeskanning direkte. Skriv EAN manuelt under kameraet.");
+        setCameraError("Denne nettleseren støtter ikke strekkodeskanning direkte. Bruk en annen mobil/nettleser for skanning.");
       }
     } catch (cameraErrorValue) {
       if (cameraStartIdRef.current !== startId) return;
@@ -423,27 +433,41 @@ export default function MobileScanPage() {
     return () => {
       cancelled = true;
     };
-  }, [busy, cameraReady, canScan, selectedStoreKey]);
+  }, [busy, cameraReady, canScan, selectedStoreKey, lookup]);
 
   function nextProduct() {
     setLookup(null);
     setCurrentEan("");
-    setManualEan("");
     setManualPrice("");
     setError(null);
+    setBusy(false);
     setPhase(selectedStore ? "ready" : "idle");
-    setMessage(selectedStore ? `Du er i ${selectedStore.storeName}. Skann neste vare.` : "Velg butikk før du starter skanning.");
+    setMessage(selectedStore ? "Klar for neste vare." : "Velg butikk før du starter skanning.");
     lastScanRef.current = { ean: "", at: 0 };
+
+    window.setTimeout(() => {
+      startCamera().catch(() => undefined);
+    }, 80);
   }
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-5 text-white">
       <div className="mx-auto max-w-xl space-y-4">
-        <header className="rounded-3xl bg-white/10 p-4 ring-1 ring-white/10">
-          <p className="text-xs font-bold uppercase tracking-[0.28em] text-emerald-200">Mobil prisapp</p>
-          <h1 className="mt-2 text-3xl font-black">Skann vare og se priser</h1>
-          <p className="mt-2 text-sm text-slate-300">Velg butikken du står i. Skann EAN, se priser fra aktive butikker og legg inn dagens pris med én gang.</p>
-        </header>
+        {!selectedStore ? (
+          <header className="rounded-3xl bg-white/10 p-4 ring-1 ring-white/10">
+            <p className="text-xs font-bold uppercase tracking-[0.28em] text-emerald-200">Mobil prisapp</p>
+            <h1 className="mt-2 text-2xl font-black">Velg butikk</h1>
+            <p className="mt-2 text-sm text-slate-300">Butikk velges én gang når appen åpnes. Etterpå er skjermen optimalisert for én hånd.</p>
+          </header>
+        ) : (
+          <header className="flex items-center justify-between rounded-2xl bg-white/10 px-4 py-3 ring-1 ring-white/10">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-200">Mobil prisapp</p>
+              <p className="text-sm font-black text-white">{phaseTitle(phase)}</p>
+            </div>
+            <span className="rounded-full bg-emerald-300 px-3 py-1 text-xs font-black text-slate-950">{selectedStore.storeName}</span>
+          </header>
+        )}
 
         <section className={`rounded-3xl p-4 text-sm font-bold ring-1 ${phaseTone(phase)}`}>
           <div className="flex items-start justify-between gap-3">
@@ -460,7 +484,7 @@ export default function MobileScanPage() {
           </div>
         </section>
 
-        {!lookup ? (
+        {!lookup && !selectedStore ? (
         <section className="rounded-3xl bg-white p-4 text-slate-950 shadow-xl">
           <label className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Jeg er i butikk</label>
           <select
@@ -490,26 +514,8 @@ export default function MobileScanPage() {
             {busy ? <div className="absolute right-4 top-4 rounded-full bg-emerald-300 px-4 py-2 text-sm font-black text-slate-950">Jobber...</div> : null}
           </div>
           <div className="bg-slate-900 p-4">
-            <p className="font-bold">{cameraReady ? selectedStore ? "Klar til å skanne" : "Kamera klart, men butikk mangler" : "Starter kamera..."}</p>
+            <p className="font-bold">{cameraReady ? selectedStore ? "Klar" : "Velg butikk" : "Starter kamera..."}</p>
             {cameraError ? <p className="mt-1 text-sm text-amber-200">{cameraError}</p> : null}
-          </div>
-        </section>
-        ) : null}
-
-        {!lookup ? (
-        <section className="rounded-3xl bg-white p-4 text-slate-950 shadow-xl">
-          <label className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Manuell EAN</label>
-          <div className="mt-2 flex gap-2">
-            <input
-              value={manualEan}
-              onChange={(event) => setManualEan(event.target.value)}
-              inputMode="numeric"
-              placeholder="Skriv EAN"
-              className="min-w-0 flex-1 rounded-2xl border border-slate-200 px-4 py-3 text-base font-semibold outline-none focus:border-emerald-600"
-            />
-            <button type="button" onClick={() => lookupEan(manualEan)} disabled={!selectedStore || busy} className="rounded-2xl bg-emerald-700 px-4 py-3 font-black text-white disabled:opacity-50">
-              Søk
-            </button>
           </div>
         </section>
         ) : null}
@@ -586,7 +592,7 @@ export default function MobileScanPage() {
               {productIsUnsaved && saveMode === "none" ? <p className="mt-3 text-sm font-semibold text-slate-500">Ikke lagre brukes bare for å se Kassalapp-priser. Prisen kan ikke lagres uten produkt.</p> : null}
             </section>
 
-            <button type="button" onClick={nextProduct} className="w-full rounded-3xl bg-white px-5 py-5 text-xl font-black text-slate-950 shadow-xl">
+            <button type="button" onClick={nextProduct} className="sticky bottom-4 z-20 w-full rounded-3xl bg-white px-5 py-5 text-xl font-black text-slate-950 shadow-xl shadow-black/30">
               Skann neste vare
             </button>
           </>
