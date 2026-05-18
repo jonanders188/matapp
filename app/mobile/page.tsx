@@ -459,20 +459,12 @@ export default function MobileScanPage() {
             <h1 className="mt-2 text-2xl font-black">Velg butikk</h1>
             <p className="mt-2 text-sm text-slate-300">Butikk velges én gang når appen åpnes. Etterpå er skjermen optimalisert for én hånd.</p>
           </header>
-        ) : (
-          <header className="flex items-center justify-between rounded-2xl bg-white/10 px-4 py-3 ring-1 ring-white/10">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-200">Mobil prisapp</p>
-              <p className="text-sm font-black text-white">{phaseTitle(phase)}</p>
-            </div>
-            <span className="rounded-full bg-emerald-300 px-3 py-1 text-xs font-black text-slate-950">{selectedStore.storeName}</span>
-          </header>
-        )}
+        ) : null}
 
         <section className={`rounded-3xl p-4 text-sm font-bold ring-1 ${phaseTone(phase)}`}>
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.22em] opacity-80">Status</p>
+              <p className="text-xs font-black uppercase tracking-[0.22em] opacity-80">{selectedStore?.storeName ?? "Status"}</p>
               <p className="mt-1 text-lg font-black">{phaseTitle(phase)}</p>
               {message ? <p className="mt-1 opacity-90">{message}</p> : null}
             </div>
