@@ -60,6 +60,7 @@ export function extractShelfPriceCandidates(text: string): ShelfPriceCandidate[]
     const hasUnit = unitWords.test(context);
     const hasPiece = pieceWords.test(context);
 
+    // 25 90, 47 90, 21 30. This is often main shelf price.
     for (const match of context.matchAll(/(?:^|\D)(\d{1,3})\s+(\d{2})(?:\D|$)/g)) {
       const kroner = match[1];
       const ore = match[2];
@@ -82,6 +83,7 @@ export function extractShelfPriceCandidates(text: string): ShelfPriceCandidate[]
       );
     }
 
+    // 25,90 / 25.90 style.
     for (const match of context.matchAll(/(?:^|\D)(\d{1,3})[,.](\d{2})(?:\D|$)/g)) {
       const kroner = match[1];
       const ore = match[2];
@@ -128,7 +130,7 @@ export function extractShelfPriceCandidatesFromWords(wordsInput: unknown): Shelf
     cy: number;
   };
 
-  const words = (wordsInput as OcrWord[])
+  const words = (wordsInput as Array<{ text?: string; bbox?: { x0?: number; y0?: number; x1?: number; y1?: number } }>)
     .map((word): WordBox => {
       const raw = String(word.text ?? "").trim();
       const text = raw.replace(/[Oo]/g, "0").replace(/[Il]/g, "1").replace(/,/g, ".").trim();
@@ -162,7 +164,7 @@ export function extractShelfPriceCandidatesFromWords(wordsInput: unknown): Shelf
 
   const addCandidate = (candidate: ShelfPriceCandidate) => {
     if (!Number.isFinite(candidate.price) || candidate.price <= 0 || candidate.price > 9999) return;
-    const key = `${candidate.kind ?? "main"}:${candidate.price.toFixed(2)}`;
+    const key = `${candidate.kind}:${candidate.price.toFixed(2)}`;
     const existing = candidates.get(key);
     if (!existing || candidate.score > existing.score) candidates.set(key, candidate);
   };
@@ -170,6 +172,7 @@ export function extractShelfPriceCandidatesFromWords(wordsInput: unknown): Shelf
   const unitWords = /(pr\s*kg|\/\s*kg|kr\s*\/\s*kg|kgpris|kilopris|pr\s*l|\/\s*l|literpris|enhetspris)/i;
   const pieceWords = /(\/\s*stk|pr\s*stk|stkpris|stykkpris)/i;
 
+  // Main shelf price pattern: large kroner word plus small two-digit ore word close to the upper/right side.
   for (const kronerWord of numericWords) {
     if (!/^\d{1,3}$/.test(kronerWord.text)) continue;
 
@@ -215,6 +218,7 @@ export function extractShelfPriceCandidatesFromWords(wordsInput: unknown): Shelf
     }
   }
 
+  // Unit price pattern: 259.00 Pr KG, 479,00 /KG, 53.25.
   for (const word of numericWords) {
     const match = word.text.match(/^(\d{1,4})[.](\d{2})$/);
     if (!match) continue;
@@ -240,7 +244,7 @@ export function extractShelfPriceCandidatesFromWords(wordsInput: unknown): Shelf
       score,
       reason: hasUnit ? "Enhetspris/kgpris" : "Desimalpris",
       kind: hasUnit || (leftSide && lowerArea && price > 40) ? "unit" : "main"
-    });
+    } as ShelfPriceCandidate);
   }
 
   return [...candidates.values()]
@@ -253,17 +257,10 @@ export function extractShelfPriceCandidatesFromWords(wordsInput: unknown): Shelf
 
 export function mergeShelfCandidates(...candidateGroups: ShelfPriceCandidate[][]) {
   const merged = new Map<string, ShelfPriceCandidate>();
-
   for (const candidate of candidateGroups.flat()) {
-    const key = `${candidate.kind ?? "main"}:${candidate.price.toFixed(2)}`;
+    const key = candidate.price.toFixed(2);
     const existing = merged.get(key);
     if (!existing || candidate.score > existing.score) merged.set(key, candidate);
   }
-
-  return [...merged.values()]
-    .sort((a, b) => {
-      if (a.kind !== b.kind) return a.kind === "main" ? -1 : 1;
-      return b.score - a.score || a.price - b.price;
-    })
-    .slice(0, 6);
+  return [...merged.values()].sort((a, b) => b.score - a.score || a.price - b.price).slice(0, 6);
 }
