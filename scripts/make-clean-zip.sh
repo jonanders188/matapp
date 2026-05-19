@@ -35,7 +35,7 @@ zip -r "$ZIP_PATH" "$PROJECT_NAME" \
 
 echo
 echo "== Sjekker at ZIP er ren =="
-BAD_ZIP_CONTENT="$(unzip -l "$ZIP_PATH" | grep -E 'node_modules|\.next|\.vercel|\.git|\.env|\.DS_Store|coverage|dist|build|\.turbo|\.cache' || true)"
+BAD_ZIP_CONTENT="$(unzip -l "$ZIP_PATH" | grep -E 'node_modules/|\.next/|\.vercel/|\.git/|/\.env$|/\.env\.|/\.DS_Store|coverage/|dist/|build/|\.turbo/|\.cache/' || true)"
 
 if [ -n "$BAD_ZIP_CONTENT" ]; then
   echo "$BAD_ZIP_CONTENT"
