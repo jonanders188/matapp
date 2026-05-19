@@ -60,6 +60,18 @@ type ShelfPriceCandidate = {
   label: string;
   context: string;
   score: number;
+  reason?: string;
+};
+
+type OcrWord = {
+  text?: string;
+  confidence?: number;
+  bbox?: {
+    x0?: number;
+    y0?: number;
+    x1?: number;
+    y1?: number;
+  };
 };
 
 type TesseractProgress = {
@@ -140,7 +152,7 @@ function extractShelfPriceCandidates(text: string): ShelfPriceCandidate[] {
         - (price > 250 ? 20 : 0);
 
       const key = price.toFixed(2);
-      const candidate = { price, label: `${kroner},${ore}`, context: context.trim(), score };
+      const candidate = { price, label: `${kroner},${ore}`, context: context.trim(), score, reason: "Teksttreff" };
       const existing = candidates.get(key);
       if (!existing || candidate.score > existing.score) candidates.set(key, candidate);
     }
@@ -148,6 +160,90 @@ function extractShelfPriceCandidates(text: string): ShelfPriceCandidate[] {
 
   return [...candidates.values()].sort((a, b) => b.score - a.score || a.price - b.price).slice(0, 5);
 }
+
+function extractShelfPriceCandidatesFromWords(wordsInput: unknown): ShelfPriceCandidate[] {
+  if (!Array.isArray(wordsInput)) return [];
+
+  const words = (wordsInput as OcrWord[])
+    .map((word) => {
+      const text = String(word.text ?? "").replace(/O/g, "0").replace(/o/g, "0").replace(/,/g, ".").trim();
+      const bbox = word.bbox;
+      const x0 = Number(bbox?.x0 ?? 0);
+      const y0 = Number(bbox?.y0 ?? 0);
+      const x1 = Number(bbox?.x1 ?? 0);
+      const y1 = Number(bbox?.y1 ?? 0);
+      const width = Math.max(1, x1 - x0);
+      const height = Math.max(1, y1 - y0);
+      return { text, x0, y0, x1, y1, width, height, confidence: Number(word.confidence ?? 0) };
+    })
+    .filter((word) => word.text && /\d/.test(word.text));
+
+  if (!words.length) return [];
+
+  const heights = words.map((word) => word.height).sort((a, b) => a - b);
+  const medianHeight = heights[Math.floor(heights.length / 2)] || 1;
+  const candidates = new Map<string, ShelfPriceCandidate>();
+
+  for (const kronerWord of words) {
+    const kronerMatch = kronerWord.text.match(/^\d{1,3}$/);
+    if (!kronerMatch) continue;
+
+    const kroner = kronerMatch[0];
+    const isLargeMainNumber = kronerWord.height >= medianHeight * 1.25;
+
+    const oreWords = words.filter((oreWord) => {
+      if (oreWord === kronerWord) return false;
+      if (!/^\d{2}$/.test(oreWord.text)) return false;
+
+      const kronerCenterY = (kronerWord.y0 + kronerWord.y1) / 2;
+      const oreCenterY = (oreWord.y0 + oreWord.y1) / 2;
+      const sameLineish = Math.abs(kronerCenterY - oreCenterY) < kronerWord.height * 0.85;
+      const rightOfKroner = oreWord.x0 >= kronerWord.x0 + kronerWord.width * 0.35;
+      const closeToKroner = oreWord.x0 - kronerWord.x1 < kronerWord.width * 1.7;
+      const smallerOre = oreWord.height <= kronerWord.height * 0.95;
+
+      return sameLineish && rightOfKroner && closeToKroner && smallerOre;
+    });
+
+    for (const oreWord of oreWords) {
+      const price = normalizePriceCandidate(kroner, oreWord.text);
+      if (price === null) continue;
+
+      const commonOre = [0, 40, 50, 80, 90, 95, 99].includes(Number(oreWord.text));
+      const score =
+        135
+        + (isLargeMainNumber ? 45 : 0)
+        + (commonOre ? 12 : 0)
+        + Math.min(15, kronerWord.height / Math.max(1, medianHeight) * 5)
+        - (price > 250 ? 25 : 0);
+
+      const key = price.toFixed(2);
+      const candidate = {
+        price,
+        label: `${kroner},${oreWord.text}`,
+        context: `Stor prisfont: ${kroner} + liten øretekst: ${oreWord.text}`,
+        score,
+        reason: isLargeMainNumber ? "Stor prisfont" : "Ordposisjon"
+      };
+
+      const existing = candidates.get(key);
+      if (!existing || candidate.score > existing.score) candidates.set(key, candidate);
+    }
+  }
+
+  return [...candidates.values()].sort((a, b) => b.score - a.score || a.price - b.price).slice(0, 5);
+}
+
+function mergeShelfCandidates(...candidateGroups: ShelfPriceCandidate[][]) {
+  const merged = new Map<string, ShelfPriceCandidate>();
+  for (const candidate of candidateGroups.flat()) {
+    const key = candidate.price.toFixed(2);
+    const existing = merged.get(key);
+    if (!existing || candidate.score > existing.score) merged.set(key, candidate);
+  }
+  return [...merged.values()].sort((a, b) => b.score - a.score || a.price - b.price).slice(0, 6);
+}
+
 
 function captureShelfImage(video: HTMLVideoElement, canvas: HTMLCanvasElement) {
   const width = video.videoWidth || 1280;
@@ -453,13 +549,15 @@ export default function MobileScanPage() {
       });
 
       const text = result.data?.text ?? "";
-      const candidates = extractShelfPriceCandidates(text);
+      const wordCandidates = extractShelfPriceCandidatesFromWords((result.data as { words?: unknown })?.words);
+      const textCandidates = extractShelfPriceCandidates(text);
+      const candidates = mergeShelfCandidates(wordCandidates, textCandidates);
       setShelfCandidates(candidates);
 
       const best = candidates[0];
       if (!best) {
         beep("error");
-        setShelfOcrStatus("Fant ikke en trygg pris. Hold kameraet nærmere hyllekanten og prøv igjen.");
+        setShelfOcrStatus("Fant ikke en trygg pris. Skriv prisen manuelt, eller hold kameraet nærmere og prøv igjen.");
         return;
       }
 
@@ -758,6 +856,36 @@ export default function MobileScanPage() {
                 </div>
               </div>
 
+              <div className="mt-4 rounded-2xl border-2 border-emerald-100 bg-white p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <label htmlFor="manual-shelf-price" className="text-sm font-black uppercase tracking-[0.18em] text-slate-500">
+                    Pris
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setManualPrice("");
+                      setShelfCandidates([]);
+                      setShelfOcrStatus("Skriv prisen manuelt og lagre.");
+                    }}
+                    className="rounded-full bg-slate-100 px-3 py-2 text-xs font-black text-slate-700"
+                  >
+                    Manuell
+                  </button>
+                </div>
+                <input
+                  id="manual-shelf-price"
+                  value={manualPrice}
+                  onChange={(event) => setManualPrice(event.target.value)}
+                  inputMode="decimal"
+                  placeholder="f.eks. 29,90"
+                  className="mt-3 w-full rounded-3xl border-2 border-slate-200 px-4 py-5 text-3xl font-black text-slate-950 outline-none focus:border-emerald-500"
+                />
+                <p className="mt-2 text-sm font-semibold text-slate-500">
+                  OCR er bare forslag. Skriv over prisen her hvis hyllekantlesingen bommer.
+                </p>
+              </div>
+
               {shelfCandidates.length ? (
                 <div className="mt-4 rounded-2xl bg-slate-50 p-3">
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Prisforslag</p>
@@ -770,13 +898,14 @@ export default function MobileScanPage() {
                         className={`rounded-2xl px-3 py-3 text-left font-black ${manualPrice === candidate.price.toFixed(2) ? "bg-emerald-700 text-white" : "bg-white text-slate-900"}`}
                       >
                         {kr(candidate.price)}
+                        {candidate.reason ? <span className="mt-1 block text-xs font-bold opacity-70">{candidate.reason}</span> : null}
                       </button>
                     ))}
                   </div>
                 </div>
               ) : null}
 
-              {manualPrice ? (
+              {parsePrice(manualPrice) ? (
                 <button
                   type="button"
                   onClick={() => savePrice(parsePrice(manualPrice) ?? undefined)}
