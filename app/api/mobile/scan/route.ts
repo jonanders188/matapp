@@ -33,9 +33,8 @@ function normalizeEan(value: unknown) {
   return String(value ?? "").replace(/\D/g, "").trim();
 }
 
-function productPayload(product: KassalappProduct, householdId: string) {
+function productPayload(product: KassalappProduct) {
   return {
-    household_id: householdId,
     kassalapp_id: product.id,
     ean: normalizeEan(product.ean) || null,
     name: product.name,
@@ -43,11 +42,6 @@ function productPayload(product: KassalappProduct, householdId: string) {
     category: normalizeCategory(product),
     package_size: packageSize(product),
     image_url: product.image ?? null,
-    target_price: product.current_price ?? null,
-    target_price_unit: product.current_unit_price ? "unit_price" : "unit",
-    preferred_store: product.store?.name ?? null,
-    desired_stock: 1,
-    is_basis: true,
     notes: product.url ?? null,
     ...productMetadataPayload(product)
   };
@@ -415,27 +409,13 @@ async function findOrCreateProduct(ean: string, householdId: string, options?: {
   const existingProduct = await findCanonicalProductByEan<MobileProductRow>(supabase, ean, PRODUCT_IDENTITY_SELECT);
 
   if (existingProduct) {
-    let product = existingProduct;
-
-    if (!product.is_basis) {
-      const basisUpdate = await supabase
-        .from("products")
-        .update({ is_basis: true })
-        .eq("id", product.id)
-        .select("id, name, brand, ean, category, package_size, image_url, desired_stock, target_price, target_price_unit, preferred_store, is_basis, is_freezable, notes")
-        .single();
-
-      if (basisUpdate.error) throw basisUpdate.error;
-      product = basisUpdate.data as MobileProductRow;
-    }
-
-    const householdProduct = await ensureHouseholdProduct(householdId, product.id, product);
-    const priceResult = options?.skipKassalappPriceInsert ? { inserted: 0, found: false } : await refreshProductPrices(product.id, ean);
+    const householdProduct = await ensureHouseholdProduct(householdId, existingProduct.id, existingProduct);
+    const priceResult = options?.skipKassalappPriceInsert ? { inserted: 0, found: false } : await refreshProductPrices(existingProduct.id, ean);
 
     return {
-      product: mergeHouseholdProduct(product, householdProduct.data),
+      product: mergeHouseholdProduct(existingProduct, householdProduct.data),
       created: false,
-      madeBasis: !existingProduct.is_basis || householdProduct.madeBasis,
+      madeBasis: householdProduct.madeBasis,
       priceObservationsInserted: priceResult.inserted
     };
   }
@@ -447,7 +427,7 @@ async function findOrCreateProduct(ean: string, householdId: string, options?: {
   }
 
   const payload = {
-    ...productPayload(selected, householdId),
+    ...productPayload(selected),
     ean: normalizeEan(selected.ean) || ean
   };
 

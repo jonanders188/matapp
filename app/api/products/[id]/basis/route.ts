@@ -58,15 +58,6 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 
     if (result.error) throw result.error;
 
-    // Compatibility while older screens still look at products.is_basis.
-    const legacy = await supabase
-      .from("products")
-      .update({ is_basis: isBasis })
-      .eq("id", id)
-      .eq("household_id", householdId);
-
-    if (legacy.error) throw legacy.error;
-
     return NextResponse.json({ data: result.data });
   } catch (error) {
     console.error("[api/products/[id]/basis] PATCH feilet", error);

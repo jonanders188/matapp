@@ -52,7 +52,47 @@ export async function GET(request: Request) {
     const productsResult = await productsQuery;
     if (productsResult.error) throw productsResult.error;
 
-    const products = (productsResult.data ?? []) as ProductRow[];
+    let products = (productsResult.data ?? []) as ProductRow[];
+
+    // Default catalog view should never hide active basis products just because
+    // they fall outside the first global products page. Search results are still
+    // limited to matching products, but the initial /catalog page should include
+    // every active household basis product before filling with global products.
+    if (!query) {
+      const activeBasisResult = await supabase
+        .from("household_products")
+        .select("product_id")
+        .eq("household_id", householdId)
+        .eq("is_basis", true)
+        .order("updated_at", { ascending: false });
+
+      if (activeBasisResult.error) throw activeBasisResult.error;
+
+      const activeBasisIds = (activeBasisResult.data ?? [])
+        .map((row) => row.product_id)
+        .filter(Boolean) as string[];
+      const productsById = new Map(products.map((product) => [product.id, product]));
+      const missingBasisIds = activeBasisIds.filter((productId) => !productsById.has(productId));
+
+      if (missingBasisIds.length) {
+        const missingBasisProductsResult = await supabase
+          .from("products")
+          .select("id, household_id, name, brand, ean, category, package_size, image_url, target_price, preferred_store, desired_stock, is_basis, created_at")
+          .in("id", missingBasisIds);
+
+        if (missingBasisProductsResult.error) throw missingBasisProductsResult.error;
+        for (const product of (missingBasisProductsResult.data ?? []) as ProductRow[]) {
+          productsById.set(product.id, product);
+        }
+      }
+
+      const activeBasisProducts = activeBasisIds
+        .map((productId) => productsById.get(productId))
+        .filter(Boolean) as ProductRow[];
+      const otherProducts = products.filter((product) => !activeBasisIds.includes(product.id));
+      products = [...activeBasisProducts, ...otherProducts].slice(0, Math.max(80, activeBasisProducts.length));
+    }
+
     const productIds = products.map((product) => product.id);
 
     const [householdProductsResult, observationsResult] = await Promise.all([
@@ -98,11 +138,10 @@ export async function GET(request: Request) {
     return NextResponse.json({
       data: products.map((product) => {
         const householdProduct = householdByProductId.get(product.id) ?? null;
-        const legacyOwnBasis = product.household_id === householdId && product.is_basis === true;
         return {
           ...product,
-          is_in_household: Boolean(householdProduct) || product.household_id === householdId,
-          is_basis: householdProduct?.is_basis ?? legacyOwnBasis,
+          is_in_household: Boolean(householdProduct),
+          is_basis: householdProduct?.is_basis ?? false,
           desired_stock: householdProduct?.desired_stock ?? product.desired_stock,
           target_price: householdProduct?.target_price ?? product.target_price,
           preferred_store: householdProduct?.preferred_store ?? product.preferred_store,

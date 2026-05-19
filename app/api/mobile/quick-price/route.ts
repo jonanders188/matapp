@@ -77,9 +77,8 @@ function toNumber(value: unknown) {
   return Number.isFinite(number) ? number : null;
 }
 
-function productPayload(product: KassalappProduct, householdId: string | null, isBasis: boolean, ean: string) {
+function productPayload(product: KassalappProduct, ean: string) {
   return {
-    household_id: isBasis ? householdId : null,
     kassalapp_id: product.id,
     ean: cleanEan(product.ean) || ean,
     name: product.name,
@@ -87,12 +86,6 @@ function productPayload(product: KassalappProduct, householdId: string | null, i
     category: normalizeCategory(product),
     package_size: packageSize(product),
     image_url: product.image ?? null,
-    target_price: product.current_price ?? null,
-    target_price_unit: product.current_unit_price ? "unit_price" : "unit",
-    preferred_store: product.store?.name ?? null,
-    desired_stock: isBasis ? 1 : 0,
-    is_basis: isBasis,
-    is_freezable: false,
     notes: product.url ?? null,
     ...productMetadataPayload(product)
   };
@@ -178,7 +171,6 @@ async function ensureHouseholdProduct(householdId: string, product: ProductRow) 
 
   if (result.error) throw result.error;
 
-  await supabase.from("products").update({ is_basis: true, household_id: householdId }).eq("id", product.id);
   return result.data;
 }
 
@@ -345,7 +337,7 @@ async function findOrCreateProductForSave(ean: string, householdId: string, save
 
   const inserted = await insertProductWithoutDuplicate<ProductRow>(
     supabase,
-    productPayload(lookup.selected, saveMode === "basis" ? householdId : null, saveMode === "basis", ean),
+    productPayload(lookup.selected, ean),
     PRODUCT_IDENTITY_SELECT
   );
 

@@ -22,22 +22,16 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       return NextResponse.json({ error: "Fant ikke produkt" }, { status: 404 });
     }
 
-    const productBelongsToHousehold = product.household_id === householdId;
+    const householdProductResult = await supabase
+      .from("household_products")
+      .select("id")
+      .eq("household_id", householdId)
+      .eq("product_id", id)
+      .limit(1);
 
-    let householdProductExists = false;
-    if (!productBelongsToHousehold) {
-      const householdProductResult = await supabase
-        .from("household_products")
-        .select("id")
-        .eq("household_id", householdId)
-        .eq("product_id", id)
-        .limit(1);
+    if (householdProductResult.error) throw householdProductResult.error;
 
-      if (householdProductResult.error) throw householdProductResult.error;
-      householdProductExists = Boolean(householdProductResult.data?.[0]);
-    }
-
-    if (!productBelongsToHousehold && !householdProductExists) {
+    if (!householdProductResult.data?.[0]) {
       return NextResponse.json({ error: "Produktet er ikke koblet til husholdningen" }, { status: 404 });
     }
 

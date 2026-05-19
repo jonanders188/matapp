@@ -23,6 +23,17 @@ function normalizePriceCandidate(kroner: string, ore: string) {
   return Number.isFinite(price) && price > 0 && price < 1000 ? price : null;
 }
 
+function contextAroundMatch(text: string, index: number, length: number, radius = 22) {
+  const start = Math.max(0, index - radius);
+  const end = Math.min(text.length, index + length + radius);
+  return text.slice(start, end).replace(/\s+/g, " ").trim();
+}
+
+function sortShelfCandidates(a: ShelfPriceCandidate, b: ShelfPriceCandidate) {
+  if (a.kind !== b.kind) return a.kind === "main" ? -1 : 1;
+  return b.score - a.score || a.price - b.price;
+}
+
 export function extractShelfPriceCandidates(text: string): ShelfPriceCandidate[] {
   const normalized = text
     .replace(/\r/g, "\n")
@@ -52,13 +63,11 @@ export function extractShelfPriceCandidates(text: string): ShelfPriceCandidate[]
     .map((line) => line.trim())
     .filter(Boolean);
 
-  const unitWords = /(pr\s*kg|\/\s*kg|kr\s*\/\s*kg|kgpris|kilopris|pr\s*l|\/\s*l|literpris|enhetspris)/i;
+  const unitWords = /(pr\s*kg|\/\s*kg|kr\s*\/\s*kg|kgpris|kilopris|pr\s*l|\/\s*l|kr\s*\/\s*l|literpris|enhetspris)/i;
   const pieceWords = /(\/\s*stk|pr\s*stk|stkpris|stykkpris)/i;
 
   for (const line of lines) {
     const context = line.replace(/\s+/g, " ").trim();
-    const hasUnit = unitWords.test(context);
-    const hasPiece = pieceWords.test(context);
 
     // 25 90, 47 90, 21 30. This is often main shelf price.
     for (const match of context.matchAll(/(?:^|\D)(\d{1,3})\s+(\d{2})(?:\D|$)/g)) {
@@ -66,6 +75,10 @@ export function extractShelfPriceCandidates(text: string): ShelfPriceCandidate[]
       const ore = match[2];
       const price = normalizePriceCandidate(kroner, ore);
       if (price === null) continue;
+
+      const localContext = contextAroundMatch(context, match.index ?? 0, match[0].length);
+      const hasUnit = unitWords.test(localContext);
+      const hasPiece = pieceWords.test(localContext);
 
       let score = 90;
       if (hasPiece) score += 30;
@@ -76,7 +89,7 @@ export function extractShelfPriceCandidates(text: string): ShelfPriceCandidate[]
       addCandidate(
         price,
         `${kroner},${ore}`,
-        context,
+        localContext || context,
         score,
         hasUnit ? "Enhetspris-tekst i nærheten" : hasPiece ? "Stykkpris/hovedpris" : "Teksttreff",
         hasUnit ? "unit" : "main"
@@ -90,6 +103,10 @@ export function extractShelfPriceCandidates(text: string): ShelfPriceCandidate[]
       const price = normalizePriceCandidate(kroner, ore);
       if (price === null) continue;
 
+      const localContext = contextAroundMatch(context, match.index ?? 0, match[0].length);
+      const hasUnit = unitWords.test(localContext);
+      const hasPiece = pieceWords.test(localContext);
+
       let score = 75;
       if (hasPiece) score += 30;
       if (hasUnit) score -= 95;
@@ -98,7 +115,7 @@ export function extractShelfPriceCandidates(text: string): ShelfPriceCandidate[]
       addCandidate(
         price,
         `${kroner},${ore}`,
-        context,
+        localContext || context,
         score,
         hasUnit ? "Enhetspris" : hasPiece ? "Stykkpris/hovedpris" : "Tekstpris",
         hasUnit ? "unit" : "main"
@@ -106,12 +123,7 @@ export function extractShelfPriceCandidates(text: string): ShelfPriceCandidate[]
     }
   }
 
-  return [...candidates.values()]
-    .sort((a, b) => {
-      if (a.kind !== b.kind) return a.kind === "main" ? -1 : 1;
-      return b.score - a.score || a.price - b.price;
-    })
-    .slice(0, 8);
+  return [...candidates.values()].sort(sortShelfCandidates).slice(0, 8);
 }
 
 export function extractShelfPriceCandidatesFromWords(wordsInput: unknown): ShelfPriceCandidate[] {
@@ -169,7 +181,7 @@ export function extractShelfPriceCandidatesFromWords(wordsInput: unknown): Shelf
     if (!existing || candidate.score > existing.score) candidates.set(key, candidate);
   };
 
-  const unitWords = /(pr\s*kg|\/\s*kg|kr\s*\/\s*kg|kgpris|kilopris|pr\s*l|\/\s*l|literpris|enhetspris)/i;
+  const unitWords = /(pr\s*kg|\/\s*kg|kr\s*\/\s*kg|kgpris|kilopris|pr\s*l|\/\s*l|kr\s*\/\s*l|literpris|enhetspris)/i;
   const pieceWords = /(\/\s*stk|pr\s*stk|stkpris|stykkpris)/i;
 
   // Main shelf price pattern: large kroner word plus small two-digit ore word close to the upper/right side.
@@ -247,12 +259,7 @@ export function extractShelfPriceCandidatesFromWords(wordsInput: unknown): Shelf
     } as ShelfPriceCandidate);
   }
 
-  return [...candidates.values()]
-    .sort((a, b) => {
-      if (a.kind !== b.kind) return a.kind === "main" ? -1 : 1;
-      return b.score - a.score || a.price - b.price;
-    })
-    .slice(0, 8);
+  return [...candidates.values()].sort(sortShelfCandidates).slice(0, 8);
 }
 
 export function mergeShelfCandidates(...candidateGroups: ShelfPriceCandidate[][]) {
@@ -262,5 +269,5 @@ export function mergeShelfCandidates(...candidateGroups: ShelfPriceCandidate[][]
     const existing = merged.get(key);
     if (!existing || candidate.score > existing.score) merged.set(key, candidate);
   }
-  return [...merged.values()].sort((a, b) => b.score - a.score || a.price - b.price).slice(0, 6);
+  return [...merged.values()].sort(sortShelfCandidates).slice(0, 6);
 }

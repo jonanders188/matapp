@@ -46,9 +46,8 @@ function priceMatchesForSeed(seed: TopProductSeed, matches: KassalappProduct[], 
     .slice(0, 8);
 }
 
-function productPayload(seed: TopProductSeed, product: KassalappProduct, householdId: string) {
+function productPayload(seed: TopProductSeed, product: KassalappProduct) {
   return {
-    household_id: householdId,
     kassalapp_id: product.id,
     ean: normalizeProductEan(product.ean ?? seed.ean),
     name: product.name,
@@ -56,13 +55,7 @@ function productPayload(seed: TopProductSeed, product: KassalappProduct, househo
     category: normalizeCategory(product) ?? seed.category,
     package_size: packageSize(product),
     image_url: product.image ?? null,
-    target_price: seed.targetPrice ?? product.current_price ?? null,
-    target_price_unit: product.current_unit_price ? "unit_price" : "unit",
-    desired_stock: seed.desiredStock,
-    is_basis: seed.isBasis ?? false,
-    is_freezable: seed.isFreezable ?? false,
-    preferred_store: seed.preferredStore ?? product.store?.name ?? null,
-    notes: [seed.notes, product.url].filter(Boolean).join("\n") || null,
+    notes: product.url ?? null,
     ...productMetadataPayload(product)
   };
 }
@@ -195,7 +188,7 @@ async function importOne(seed: TopProductSeed, householdId: string, dryRun: bool
 
   const supabase = getSupabaseAdmin();
   const existing = await findExistingProduct(householdId, seed, chosen);
-  const payload = productPayload(seed, chosen, householdId);
+  const payload = productPayload(seed, chosen);
 
   let saved = existing
     ? await supabase.from("products").update(payload).eq("id", existing.id).select("id, name").limit(1)

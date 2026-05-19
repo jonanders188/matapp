@@ -35,9 +35,8 @@ function newestCandidate(candidates: KassalappProduct[]) {
   return [...candidates].sort((a, b) => Number(b.current_price ?? 0) - Number(a.current_price ?? 0))[0] ?? null;
 }
 
-function productPayload(product: KassalappProduct, householdId: string, ean: string) {
+function productPayload(product: KassalappProduct, ean: string) {
   return {
-    household_id: householdId,
     kassalapp_id: product.id,
     ean: cleanEan(product.ean) || ean,
     name: product.name,
@@ -45,11 +44,6 @@ function productPayload(product: KassalappProduct, householdId: string, ean: str
     category: normalizeCategory(product),
     package_size: packageSize(product),
     image_url: product.image ?? null,
-    target_price: product.current_price ?? null,
-    target_price_unit: product.current_unit_price ? "unit_price" : "unit",
-    preferred_store: product.store?.name ?? null,
-    desired_stock: 1,
-    is_basis: true,
     notes: product.url ?? null,
     ...productMetadataPayload(product)
   };
@@ -157,22 +151,8 @@ async function findOrCreateProduct(householdId: string, ean: string) {
   const existingProduct = await findCanonicalProductByEan<ShelfProductRow>(supabase, ean, PRODUCT_IDENTITY_SELECT);
 
   if (existingProduct) {
-    let product = existingProduct;
-
-    if (!product.is_basis) {
-      const updated = await supabase
-        .from("products")
-        .update({ is_basis: true })
-        .eq("id", product.id)
-        .select("id, name, brand, ean, category, package_size, image_url, desired_stock, target_price, target_price_unit, preferred_store, is_basis, is_freezable, notes")
-        .single();
-
-      if (updated.error) throw updated.error;
-      product = updated.data as ShelfProductRow;
-    }
-
-    const householdProduct = await ensureHouseholdProduct(householdId, product.id, product);
-    return { product: mergeHouseholdProduct(product, householdProduct), created: false };
+    const householdProduct = await ensureHouseholdProduct(householdId, existingProduct.id, existingProduct);
+    return { product: mergeHouseholdProduct(existingProduct, householdProduct), created: false };
   }
 
   const candidates = await findKassalappProductsByEan(ean);
@@ -184,7 +164,7 @@ async function findOrCreateProduct(householdId: string, ean: string) {
 
   const saved = await insertProductWithoutDuplicate<ShelfProductRow>(
     supabase,
-    productPayload(selected, householdId, ean),
+    productPayload(selected, ean),
     PRODUCT_IDENTITY_SELECT
   );
 

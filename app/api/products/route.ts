@@ -37,9 +37,8 @@ function logApiError(context: string, error: unknown) {
   console.error(`[api/products] ${context}`, errorPayload(error, "Ukjent feil"));
 }
 
-function productPayload(product: KassalappProduct, householdId: string) {
+function productPayload(product: KassalappProduct) {
   return {
-    household_id: householdId,
     kassalapp_id: product.id,
     ean: normalizeProductEan(product.ean),
     name: product.name,
@@ -47,11 +46,6 @@ function productPayload(product: KassalappProduct, householdId: string) {
     category: normalizeCategory(product),
     package_size: packageSize(product),
     image_url: product.image ?? null,
-    target_price: product.current_price ?? null,
-    target_price_unit: product.current_unit_price ? "unit_price" : "unit",
-    preferred_store: product.store?.name ?? null,
-    desired_stock: 1,
-    is_basis: true,
     notes: product.url ?? null,
     ...productMetadataPayload(product)
   };
@@ -194,12 +188,18 @@ export async function GET(request: Request) {
   try {
     const supabase = getSupabaseAdmin();
     const { householdId } = await requireCurrentHousehold(request);
+    const url = new URL(request.url);
+    const basisOnly = url.searchParams.get("basis") === "true";
 
-    const householdProductsResult = await supabase
+    const householdProductsQuery = supabase
       .from("household_products")
       .select("product_id, is_basis, desired_stock, target_price, target_price_unit, preferred_store, is_freezable, notes, created_at, updated_at")
-      .eq("household_id", householdId)
-      .order("created_at", { ascending: false });
+      .eq("household_id", householdId);
+
+    const householdProductsResult = await (basisOnly
+      ? householdProductsQuery.eq("is_basis", true)
+      : householdProductsQuery
+    ).order("created_at", { ascending: false });
 
     if (householdProductsResult.error) throw householdProductsResult.error;
 
@@ -229,7 +229,9 @@ export async function GET(request: Request) {
 
     // Fallback while the app still has older products that have not been copied
     // into household_products. This can be removed after the migration is fully stable.
-    if (!products.length) {
+    // Never use the legacy fallback for /api/products?basis=true: that screen must
+    // only show rows explicitly marked as active basis products for this household.
+    if (!products.length && !basisOnly) {
       const fallback = await supabase
         .from("products")
         .select("id, name, brand, ean, category, package_size, image_url, target_price, target_price_unit, preferred_store, desired_stock, is_basis, is_freezable, notes, created_at")
@@ -343,7 +345,7 @@ export async function POST(request: Request) {
 
     const supabase = getSupabaseAdmin();
     const { householdId } = await requireCurrentHousehold(request);
-    const payload = productPayload(product, householdId);
+    const payload = productPayload(product);
     const normalizedEan = normalizeProductEan(product.ean);
 
     let existingRows: Array<{ id: string; household_id: string | null; created_at: string | null }> = [];

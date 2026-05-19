@@ -177,14 +177,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       name: String(body.name ?? "").trim(),
       brand: body.brand ? String(body.brand).trim() : null,
       category: body.category ? String(body.category).trim() : null,
-      package_size: body.package_size ? String(body.package_size).trim() : null,
-      target_price: toNullableNumber(body.target_price),
-      target_price_unit: body.target_price_unit === "unit_price" ? "unit_price" : "unit",
-      desired_stock: toNullableNumber(body.desired_stock) ?? 0,
-      is_basis: toBoolean(body.is_basis),
-      is_freezable: toBoolean(body.is_freezable),
-      preferred_store: body.preferred_store ? String(body.preferred_store).trim() : null,
-      notes: body.notes ? String(body.notes).trim() : null
+      package_size: body.package_size ? String(body.package_size).trim() : null
     };
 
     if (!productUpdatePayload.name) {
