@@ -1,13 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { authFetch } from "@/lib/auth-fetch";
-import {
-  extractShelfPriceCandidates,
-  extractShelfPriceCandidatesFromWords,
-  mergeShelfCandidates,
-  type ShelfPriceCandidate
-} from "@/lib/shelf-price-parser";
 
 type BarcodeResult = { rawValue: string };
 
@@ -61,11 +56,7 @@ type QuickLookup = {
 type SaveMode = "none" | "global" | "basis";
 type ScanPhase = "idle" | "ready" | "scanned" | "loading" | "found" | "not_found" | "saving" | "saved" | "error";
 
-
-type TesseractProgress = {
-  status?: string;
-  progress?: number;
-};
+const PRODUCT_LOOKUP_MAX_ATTEMPTS = 5;
 
 declare global {
   interface Window {
@@ -100,36 +91,6 @@ function parsePrice(value: string) {
   return Number.isFinite(number) ? number : null;
 }
 
-
-function captureShelfImage(video: HTMLVideoElement, canvas: HTMLCanvasElement) {
-  const width = video.videoWidth || 1280;
-  const height = video.videoHeight || 720;
-  const cropX = Math.round(width * 0.04);
-  const cropY = Math.round(height * 0.12);
-  const cropW = Math.round(width * 0.92);
-  const cropH = Math.round(height * 0.68);
-
-  canvas.width = 1200;
-  canvas.height = Math.round((cropH / cropW) * canvas.width);
-
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-
-  ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, canvas.width, canvas.height);
-
-  const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const data = image.data;
-  for (let i = 0; i < data.length; i += 4) {
-    const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-    const contrasted = Math.max(0, Math.min(255, (gray - 120) * 1.75 + 128));
-    data[i] = contrasted;
-    data[i + 1] = contrasted;
-    data[i + 2] = contrasted;
-  }
-  ctx.putImageData(image, 0, 0);
-
-  return canvas.toDataURL("image/jpeg", 0.92);
-}
 
 function beep(kind: "scan" | "success" | "error" = "success") {
   const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -200,7 +161,7 @@ function phaseTone(phase: ScanPhase) {
 
 export default function MobileScanPage() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const shelfCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const priceInputRef = useRef<HTMLInputElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const detectorRef = useRef<BarcodeDetectorLike | null>(null);
   const scanningRef = useRef(false);
@@ -218,10 +179,8 @@ export default function MobileScanPage() {
   const [currentEan, setCurrentEan] = useState("");
   const [lookup, setLookup] = useState<QuickLookup | null>(null);
   const [manualPrice, setManualPrice] = useState("");
-  const [shelfOcrBusy, setShelfOcrBusy] = useState(false);
-  const [shelfOcrStatus, setShelfOcrStatus] = useState<string | null>(null);
-  const [shelfCandidates, setShelfCandidates] = useState<ShelfPriceCandidate[]>([]);
   const [saveMode, setSaveMode] = useState<SaveMode>("basis");
+  const [cameraPaused, setCameraPaused] = useState(false);
 
   const activeStores = useMemo(() => stores.filter((store) => store.isEnabled !== false), [stores]);
   const selectedStore = activeStores.find((store) => store.storeKey === selectedStoreKey) ?? null;
@@ -288,9 +247,7 @@ export default function MobileScanPage() {
     setManualPrice(bestPrice.numericPrice.toFixed(2).replace(".", ","));
 
     const storeName = bestPrice.storeName ?? selectedStore?.storeName ?? selectedStoreKey;
-    setShelfOcrStatus(
-      `Fant eksisterende butikkpris hos ${storeName}: ${kr(bestPrice.numericPrice)}. Kontroller og trykk Lagre.`
-    );
+    setMessage(`Fant eksisterende butikkpris hos ${storeName}: ${kr(bestPrice.numericPrice)}. Kontroller og trykk Lagre.`);
   }, [lookup, selectedStoreKey, selectedStore?.storeName]);
 
 
@@ -304,6 +261,47 @@ export default function MobileScanPage() {
     } catch {
       setError("Kunne ikke hente aktive butikker.");
     }
+  }
+
+  async function fetchQuickLookupWithRetry(ean: string) {
+    let lastPayload: unknown = null;
+    let lastError: unknown = null;
+
+    for (let attempt = 1; attempt <= PRODUCT_LOOKUP_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        setMessage(
+          attempt === 1
+            ? `EAN ${ean} lest. Henter vare og priser...`
+            : `Fant ikke varen ennå. Prøver igjen ${attempt}/${PRODUCT_LOOKUP_MAX_ATTEMPTS}...`
+        );
+
+        const response = await authFetch(`/api/mobile/quick-price?ean=${encodeURIComponent(ean)}`, { cache: "no-store" });
+        const payload = await response.json().catch(() => null);
+        lastPayload = payload;
+
+        if (!response.ok) {
+          lastError = payload?.error ?? "Kunne ikke hente varen.";
+        } else {
+          const data = payload?.data as QuickLookup;
+          if (data?.product || attempt === PRODUCT_LOOKUP_MAX_ATTEMPTS) return data;
+          lastError = data?.kassalappMessage ?? "Fant ikke varen.";
+        }
+      } catch (errorValue) {
+        lastError = errorValue;
+      }
+
+      if (attempt < PRODUCT_LOOKUP_MAX_ATTEMPTS) {
+        await new Promise((resolve) => window.setTimeout(resolve, 300));
+      }
+    }
+
+    const message =
+      lastError instanceof Error
+        ? lastError.message
+        : typeof lastError === "string"
+          ? lastError
+          : (lastPayload as { error?: string } | null)?.error ?? "Kunne ikke hente varen.";
+    throw new Error(message);
   }
 
   async function lookupEan(rawEan: string) {
@@ -334,27 +332,23 @@ export default function MobileScanPage() {
     window.setTimeout(() => setPhase("loading"), 120);
 
     try {
-      const response = await authFetch(`/api/mobile/quick-price?ean=${encodeURIComponent(ean)}`, { cache: "no-store" });
-      const payload = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        beep("error");
-        setPhase("error");
-        setError(payload?.error ?? "Kunne ikke hente varen.");
-        return;
-      }
-
-      const data = payload?.data as QuickLookup;
+      const data = await fetchQuickLookupWithRetry(ean);
       setLookup(data);
       setSaveMode(data.existsLocally ? "none" : "basis");
       if (data.product) {
         beep("success");
         setPhase("found");
+        setMessage(`${data.product.name} er hentet. Bekreft eller oppdater prisen.`);
+        window.setTimeout(() => {
+          priceInputRef.current?.focus();
+          priceInputRef.current?.select();
+        }, 120);
       } else {
         beep("error");
         setPhase("not_found");
+        setError(data.kassalappMessage ?? `Fant ikke varen etter ${PRODUCT_LOOKUP_MAX_ATTEMPTS} forsøk.`);
+        setMessage("Skann samme vare på nytt eller prøv en annen vare.");
       }
-      setMessage(data.product ? `${data.product.name} er hentet og klar.` : data.kassalappMessage ?? "Fant ikke varen.");
     } catch (lookupError) {
       beep("error");
       setPhase("error");
@@ -418,12 +412,10 @@ export default function MobileScanPage() {
       const data = payload?.data as QuickLookup;
       setLookup(data);
       setCurrentEan(data.ean);
-      setManualPrice("");
-      setShelfCandidates([]);
-      setShelfOcrStatus(null);
       beep("success");
       setPhase("saved");
-      setMessage(`Lagret ${price.toFixed(2)} kr hos ${selectedStore.storeName}. Klar for neste vare.`);
+      setMessage(`Lagret ${price.toFixed(2)} kr hos ${selectedStore.storeName}. Hopper tilbake til EAN-skanning...`);
+      window.setTimeout(() => nextProduct(), 650);
     } catch (saveError) {
       beep("error");
       setPhase("error");
@@ -431,77 +423,6 @@ export default function MobileScanPage() {
     } finally {
       setBusy(false);
     }
-  }
-
-  async function readShelfPrice() {
-    if (!lookup?.product) {
-      setError("Skann varen først, så kan hylleprisen leses.");
-      return;
-    }
-
-    const video = videoRef.current;
-    const canvas = shelfCanvasRef.current;
-    if (!video || !canvas || video.readyState < 2) {
-      setError("Kameraet er ikke klart. Trykk Skann neste vare og prøv igjen.");
-      return;
-    }
-
-    const image = captureShelfImage(video, canvas);
-    if (!image) {
-      setError("Kunne ikke ta bilde av hyllekanten.");
-      return;
-    }
-
-    beep("scan");
-    setShelfOcrBusy(true);
-    setShelfOcrStatus("Leser hyllekant...");
-    setShelfCandidates([]);
-    setError(null);
-
-    try {
-      const Tesseract = await import("tesseract.js");
-      const result = await Tesseract.recognize(image, "nor+eng", {
-        logger: (progress: TesseractProgress) => {
-          if (progress.status === "recognizing text" && typeof progress.progress === "number") {
-            setShelfOcrStatus(`Leser pris ${Math.round(progress.progress * 100)}%`);
-          }
-        }
-      });
-
-      const text = result.data?.text ?? "";
-      const wordCandidates = extractShelfPriceCandidatesFromWords((result.data as { words?: unknown })?.words);
-      const textCandidates = extractShelfPriceCandidates(text);
-      const candidates = mergeShelfCandidates(wordCandidates, textCandidates);
-      setShelfCandidates(candidates);
-
-      const best = candidates[0];
-      if (!best) {
-        beep("error");
-        setShelfOcrStatus("Fant ikke en trygg pris. Skriv prisen manuelt, eller hold kameraet nærmere og prøv igjen.");
-        return;
-      }
-
-      setManualPrice(best.price.toFixed(2));
-      beep("success");
-      setShelfOcrStatus(`Fant ${kr(best.price)}. Kontroller og lagre.`);
-    } catch (ocrError) {
-      beep("error");
-      setShelfOcrStatus(null);
-      setError(ocrError instanceof Error ? ocrError.message : "Kunne ikke lese hyllekanten.");
-    } finally {
-      setShelfOcrBusy(false);
-    }
-  }
-
-  function resetForNextProduct() {
-    lastScanRef.current = { ean: "", at: 0 };
-    setLookup(null);
-    setCurrentEan("");
-    setManualPrice("");
-    setShelfCandidates([]);
-    setShelfOcrStatus(null);
-    setError(null);
-    setMessage(selectedStore ? "Klar. Skann neste vare." : "Velg butikk før du starter skanning.");
   }
 
   async function startCamera() {
@@ -572,20 +493,49 @@ export default function MobileScanPage() {
     setCurrentEan("");
     setManualPrice("");
     setError(null);
+    setCameraPaused(false);
     setPhase(selectedStore ? "ready" : "idle");
     setMessage(selectedStore ? `Du er i ${selectedStore.storeName}. Skann en vare.` : "Velg butikk før du starter skanning.");
   }, [selectedStoreKey]);
+
+  useEffect(() => {
+    if (!lookup?.product) return;
+    const focusTimer = window.setTimeout(() => {
+      priceInputRef.current?.focus();
+      priceInputRef.current?.select();
+    }, 120);
+    return () => window.clearTimeout(focusTimer);
+  }, [lookup?.ean, lookup?.product]);
+
 
   useEffect(() => {
     startCamera().catch(() => undefined);
   }, []);
 
   useEffect(() => {
-    if (lookup) {
-      window.setTimeout(() => {
-        startCamera().catch(() => undefined);
-      }, 80);
-    }
+    if (!cameraReady) return;
+    setCameraPaused(false);
+  }, [cameraReady]);
+
+  useEffect(() => {
+    if (!cameraReady || lookup || !selectedStore) return;
+
+    const timer = window.setTimeout(() => {
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+      setCameraReady(false);
+      setCameraPaused(true);
+      setMessage("Kameraet er pauset etter 1 minutt. Trykk Skann neste vare for å fortsette.");
+    }, 60_000);
+
+    return () => window.clearTimeout(timer);
+  }, [cameraReady, lookup, selectedStore]);
+
+  useEffect(() => {
+    if (!lookup) return;
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    setCameraReady(false);
   }, [lookup]);
 
   useEffect(() => {
@@ -619,11 +569,10 @@ export default function MobileScanPage() {
   }, [busy, cameraReady, canScan, selectedStoreKey, lookup]);
 
   function nextProduct() {
+    setCameraPaused(false);
     setLookup(null);
     setCurrentEan("");
     setManualPrice("");
-    setShelfCandidates([]);
-    setShelfOcrStatus(null);
     setError(null);
     setBusy(false);
     setPhase(selectedStore ? "ready" : "idle");
@@ -637,8 +586,13 @@ export default function MobileScanPage() {
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-5 text-white">
-      <canvas ref={shelfCanvasRef} className="hidden" />
       <div className="mx-auto max-w-xl space-y-4">
+        <div className="flex justify-end">
+          <Link href="/dashboard" className="rounded-full bg-white/10 px-4 py-2 text-sm font-black text-white ring-1 ring-white/15">
+            Dashboard
+          </Link>
+        </div>
+
         {!selectedStore ? (
           <header className="rounded-3xl bg-white/10 p-4 ring-1 ring-white/10">
             <p className="text-xs font-bold uppercase tracking-[0.28em] text-emerald-200">Mobil prisapp</p>
@@ -654,9 +608,9 @@ export default function MobileScanPage() {
               <p className="mt-1 text-lg font-black">{phaseTitle(phase)}</p>
               {message ? <p className="mt-1 opacity-90">{message}</p> : null}
             </div>
-            {lookup ? (
+            {lookup || (cameraPaused && selectedStore) ? (
               <button type="button" onClick={nextProduct} className="shrink-0 rounded-2xl bg-white px-4 py-3 text-sm font-black text-slate-950">
-                Neste vare
+                {lookup ? "Neste vare" : "Skann neste vare"}
               </button>
             ) : null}
           </div>
@@ -689,10 +643,17 @@ export default function MobileScanPage() {
                 <p className="rounded-3xl bg-amber-300 px-5 py-4 text-lg font-black text-slate-950">Velg butikk først</p>
               </div>
             ) : null}
+            {cameraPaused && selectedStore ? (
+              <div className="absolute inset-0 flex items-center justify-center bg-slate-950/75 p-6 text-center">
+                <button type="button" onClick={nextProduct} className="rounded-3xl bg-emerald-300 px-6 py-5 text-xl font-black text-slate-950">
+                  Skann neste vare
+                </button>
+              </div>
+            ) : null}
             {busy ? <div className="absolute right-4 top-4 rounded-full bg-emerald-300 px-4 py-2 text-sm font-black text-slate-950">Jobber...</div> : null}
           </div>
           <div className="bg-slate-900 p-4">
-            <p className="font-bold">{cameraReady ? selectedStore ? "Klar" : "Velg butikk" : "Starter kamera..."}</p>
+            <p className="font-bold">{cameraReady ? selectedStore ? "Klar" : "Velg butikk" : cameraPaused ? "Kameraet er pauset" : "Starter kamera..."}</p>
             {cameraError ? <p className="mt-1 text-sm text-amber-200">{cameraError}</p> : null}
           </div>
         </section>
@@ -755,81 +716,48 @@ export default function MobileScanPage() {
                 </div>
               ) : null}
 
-              <div className="mt-4 overflow-hidden rounded-3xl bg-slate-950 text-white">
-                <div className="relative aspect-[4/3]">
-                  <video ref={videoRef} className="h-full w-full object-cover" muted playsInline />
-                  <div className="pointer-events-none absolute inset-x-8 top-1/2 h-28 -translate-y-1/2 rounded-3xl border-4 border-emerald-300/90 shadow-[0_0_0_999px_rgba(2,6,23,0.25)]" />
-                  <div className="absolute left-3 top-3 rounded-full bg-emerald-300 px-3 py-2 text-xs font-black text-slate-950">
-                    Hold hyllekanten i rammen
-                  </div>
-                </div>
-                <div className="p-3">
-                  <button
-                    type="button"
-                    onClick={readShelfPrice}
-                    disabled={busy || shelfOcrBusy || !lookup.product || (productIsUnsaved && saveMode === "none")}
-                    className="w-full rounded-2xl bg-emerald-400 px-4 py-4 text-lg font-black text-slate-950 disabled:opacity-50"
-                  >
-                    {shelfOcrBusy ? "Leser hyllekant..." : "Les hyllekantpris"}
-                  </button>
-                  {shelfOcrStatus ? <p className="mt-3 text-sm font-bold text-emerald-100">{shelfOcrStatus}</p> : null}
-                </div>
-              </div>
-
               <div className="mt-4 rounded-2xl border-2 border-emerald-100 bg-white p-4">
                 <div className="flex items-center justify-between gap-3">
-                  <label htmlFor="manual-shelf-price" className="text-sm font-black uppercase tracking-[0.18em] text-slate-500">
+                  <label htmlFor="manual-price" className="text-sm font-black uppercase tracking-[0.18em] text-slate-500">
                     Pris
                   </label>
                   <button
                     type="button"
                     onClick={() => {
                       setManualPrice("");
-                      setShelfCandidates([]);
-                      setShelfOcrStatus("Skriv prisen manuelt og lagre.");
+                      window.setTimeout(() => priceInputRef.current?.focus(), 0);
                     }}
                     className="rounded-full bg-slate-100 px-3 py-2 text-xs font-black text-slate-700"
                   >
-                    Manuell
+                    Tøm
                   </button>
                 </div>
                 <input
-                  id="manual-shelf-price"
+                  ref={priceInputRef}
+                  id="manual-price"
                   value={manualPrice}
                   onChange={(event) => setManualPrice(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter") return;
+                    const price = parsePrice(manualPrice);
+                    if (!price) return;
+                    event.preventDefault();
+                    savePrice(price).catch(() => undefined);
+                  }}
                   inputMode="decimal"
                   placeholder="f.eks. 29,90"
                   className="mt-3 w-full rounded-3xl border-2 border-slate-200 px-4 py-5 text-3xl font-black text-slate-950 outline-none focus:border-emerald-500"
                 />
                 <p className="mt-2 text-sm font-semibold text-slate-500">
-                  OCR er bare forslag. Skriv over prisen her hvis hyllekantlesingen bommer.
+                  Bekreft eksisterende pris, eller skriv ny pris. Etter lagring går appen automatisk tilbake til EAN-skanning.
                 </p>
               </div>
-
-              {shelfCandidates.length ? (
-                <div className="mt-4 rounded-2xl bg-slate-50 p-3">
-                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Prisforslag</p>
-                  <div className="mt-2 grid grid-cols-2 gap-2">
-                    {shelfCandidates.map((candidate) => (
-                      <button
-                        key={candidate.price.toFixed(2)}
-                        type="button"
-                        onClick={() => setManualPrice(candidate.price.toFixed(2))}
-                        className={`rounded-2xl px-3 py-3 text-left font-black ${manualPrice === candidate.price.toFixed(2) ? "bg-emerald-700 text-white" : "bg-white text-slate-900"}`}
-                      >
-                        {kr(candidate.price)}
-                        {candidate.reason ? <span className="mt-1 block text-xs font-bold opacity-70">{candidate.reason}</span> : null}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
 
               {parsePrice(manualPrice) ? (
                 <button
                   type="button"
                   onClick={() => savePrice(parsePrice(manualPrice) ?? undefined)}
-                  disabled={busy || shelfOcrBusy || !lookup.product || (productIsUnsaved && saveMode === "none")}
+                  disabled={busy || !lookup.product || (productIsUnsaved && saveMode === "none")}
                   className="mt-4 w-full rounded-3xl bg-emerald-700 px-4 py-5 text-xl font-black text-white disabled:opacity-50"
                 >
                   Lagre {kr(parsePrice(manualPrice))} hos {selectedStore?.storeName}

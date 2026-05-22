@@ -14,6 +14,10 @@ type ReceiptLineInput = {
   id: string;
   text: string;
   price: number;
+  quantity?: number;
+  quantityUnit?: "stk" | "kg" | "l";
+  unitPrice?: number;
+  totalPrice?: number;
 };
 
 type ReceiptMatchInput = {
@@ -148,6 +152,61 @@ function defaultLocation(product: { category?: string | null; name?: string | nu
 function toNumber(value: unknown, fallback = 0) {
   const number = typeof value === "number" ? value : Number(value);
   return Number.isFinite(number) ? number : fallback;
+}
+
+function receiptLinePriceDetails(line: ReceiptLineInput) {
+  // Receipt matching uses number of bought items only. Do not divide by weight,
+  // volume or package-size text from the receipt/product name.
+  const quantityUnit = "stk";
+  const rawQuantity = line.quantityUnit === "stk" || !line.quantityUnit ? toNumber(line.quantity, 1) : 1;
+  const quantity = Math.max(1, Math.min(99, Math.floor(rawQuantity)));
+  const totalPrice = toNumber(line.totalPrice, toNumber(line.price, 0));
+  const unitPrice = toNumber(line.unitPrice, quantity > 1 ? totalPrice / quantity : toNumber(line.price, 0));
+
+  return {
+    quantity,
+    quantityUnit,
+    totalPrice: Number(totalPrice.toFixed(2)),
+    unitPrice: Number(unitPrice.toFixed(2))
+  };
+}
+
+async function findReceiptPriceWarning(productId: string, newPrice: number) {
+  if (!Number.isFinite(newPrice) || newPrice <= 0) return null;
+
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("price_observations")
+    .select("price, store_name, observed_at, source")
+    .eq("product_id", productId)
+    .gt("price", 0)
+    .order("observed_at", { ascending: false })
+    .limit(12);
+
+  if (error) {
+    console.warn("[api/mobile/scan] receipt price warning check failed", error.message);
+    return null;
+  }
+
+  const prices = (data ?? [])
+    .map((row) => toNumber(row.price, 0))
+    .filter((price) => Number.isFinite(price) && price > 0 && price < 10000)
+    .sort((a, b) => a - b);
+
+  if (!prices.length) return null;
+
+  const midpoint = Math.floor(prices.length / 2);
+  const referencePrice = prices.length % 2 === 0
+    ? (prices[midpoint - 1] + prices[midpoint]) / 2
+    : prices[midpoint];
+
+  if (!Number.isFinite(referencePrice) || referencePrice <= 0) return null;
+
+  const deviation = Math.abs(newPrice - referencePrice) / referencePrice;
+  if (deviation <= 0.1) return null;
+
+  const percent = Math.round(deviation * 100);
+  return `Advarsel: Kvitteringsprisen avviker ${percent} % fra andre registreringer (${referencePrice.toFixed(2)} kr).`;
 }
 
 function normalizeReceiptText(value: string) {
@@ -306,6 +365,8 @@ async function insertReceiptPriceObservation(
   const storeIdentity = canonicalStoreIdentity(store.storeKey, storeName);
   const observedAt = receipt?.observedAt && Number.isFinite(Date.parse(receipt.observedAt)) ? receipt.observedAt : new Date().toISOString();
   const supabase = getSupabaseAdmin();
+  const priceDetails = receiptLinePriceDetails(best.line);
+  const warning = await findReceiptPriceWarning(product.id, priceDetails.unitPrice);
 
   const { error } = await supabase.from("price_observations").insert({
     product_id: product.id,
@@ -315,7 +376,7 @@ async function insertReceiptPriceObservation(
     visibility: "public",
     store_code: storeIdentity.store_code,
     store_name: storeIdentity.store_name,
-    price: Number(best.line.price),
+    price: priceDetails.unitPrice,
     unit_price: null,
     observed_at: observedAt,
     source: "receipt-scan",
@@ -325,6 +386,11 @@ async function insertReceiptPriceObservation(
       line_id: best.line.id,
       line_text: best.line.text,
       score: best.score,
+      receipt_quantity: priceDetails.quantity,
+      receipt_quantity_unit: priceDetails.quantityUnit,
+      receipt_total_price: priceDetails.totalPrice,
+      receipt_unit_price: priceDetails.unitPrice,
+      price_warning: warning,
       captured_at: new Date().toISOString(),
       receipt_store_key: receipt?.storeKey ?? null,
       canonical_store_key: store.storeKey
@@ -336,18 +402,28 @@ async function insertReceiptPriceObservation(
     return {
       lineId: best.line.id,
       lineText: best.line.text,
-      price: Number(best.line.price),
+      price: priceDetails.unitPrice,
+      quantity: priceDetails.quantity,
+      unitPrice: priceDetails.unitPrice,
+      totalPrice: priceDetails.totalPrice,
+      quantityUnit: priceDetails.quantityUnit,
       storeName,
-      inserted: false
+      inserted: false,
+      warning
     };
   }
 
   return {
     lineId: best.line.id,
     lineText: best.line.text,
-    price: Number(best.line.price),
+    price: priceDetails.unitPrice,
+    quantity: priceDetails.quantity,
+    unitPrice: priceDetails.unitPrice,
+    totalPrice: priceDetails.totalPrice,
+    quantityUnit: priceDetails.quantityUnit,
     storeName,
-    inserted: true
+    inserted: true,
+    warning
   };
 }
 

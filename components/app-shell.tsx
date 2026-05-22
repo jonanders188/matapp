@@ -32,7 +32,8 @@ const navSections: { title: string; items: NavItem[] }[] = [
       { label: "Basisutvalg", href: "/products", icon: PackageSearch, aliases: ["Produkter"], description: "Husholdningens varer" },
       { label: "Produktregister", href: "/catalog", icon: Database, aliases: ["Katalog"], description: "Søk og legg til" },
       { label: "Lager", href: "/inventory", icon: Box, description: "Hva dere har" },
-      { label: "Skann vare", href: "/mobile", icon: Smartphone, aliases: ["Mobil lager"], description: "Inn og ut av lager" },
+      { label: "Skann i butikk", href: "/mobile", icon: Smartphone, aliases: ["Mobile", "Mobil butikk"], description: "Pris og hyllekant" },
+      { label: "Skann hjemme", href: "/mobile2", icon: Smartphone, aliases: ["Mobile2", "Mobil lager"], description: "Inn og ut av lager" },
       { label: "Kjøp", href: "/purchases", icon: ReceiptText, description: "Historikk" }
     ]
   },
@@ -45,7 +46,8 @@ const navSections: { title: string; items: NavItem[] }[] = [
 ];
 
 const quickActions = [
-  { label: "Skann", href: "/mobile" },
+  { label: "Skann i butikk", href: "/mobile" },
+  { label: "Skann hjemme", href: "/mobile2" },
   { label: "Legg til vare", href: "/catalog" }
 ] as const;
 

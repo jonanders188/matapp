@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { authFetch } from "@/lib/auth-fetch";
 
 type ScanMode = "in" | "out";
-type MobileMode = ScanMode | "receipt" | "shelf";
+type MobileMode = ScanMode | "receipt";
 
 type BarcodeResult = {
   rawValue: string;
@@ -18,6 +18,10 @@ type ReceiptLine = {
   id: string;
   text: string;
   price: number;
+  quantity: number;
+  quantityUnit: "stk" | "kg" | "l";
+  unitPrice: number;
+  totalPrice: number;
   usedAt?: string;
   matchedProductName?: string;
 };
@@ -62,8 +66,13 @@ type ScanResponse = {
       lineId: string;
       lineText: string;
       price: number;
+      quantity: number;
+      quantityUnit?: "stk" | "kg" | "l";
+      unitPrice: number;
+      totalPrice: number;
       storeName: string;
       inserted: boolean;
+      warning?: string | null;
     } | null;
   };
   error?: string;
@@ -101,7 +110,6 @@ function modeText(mode: ScanMode) {
 
 function mobileModeText(mode: MobileMode) {
   if (mode === "receipt") return "Kvittering";
-  if (mode === "shelf") return "Hyllekant";
   return modeText(mode);
 }
 
@@ -142,6 +150,81 @@ function parsePrice(value: string) {
     .replace(/,/g, ".");
   const number = Number(normalized);
   return Number.isFinite(number) ? number : null;
+}
+
+function formatReceiptPrice(value: number) {
+  return value.toFixed(2).replace(".", ",");
+}
+
+function formatReceiptQuantity(quantity: number, unit: "stk" | "kg" | "l") {
+  const formatted = Number.isInteger(quantity) ? String(quantity) : quantity.toFixed(3).replace(/0+$/, "").replace(/\.$/, "").replace(".", ",");
+  return `${formatted} ${unit}`;
+}
+
+const RECEIPT_STK_QUANTITY_MARKER = "__RECEIPT_QTY_STK_";
+
+function receiptQuantityMarker(quantity: number) {
+  return `${RECEIPT_STK_QUANTITY_MARKER}${quantity}__`;
+}
+
+function normalizeReceiptQuantityText(value: string) {
+  return normalizeReceiptOcrLine(value)
+    .replace(/,/g, ".")
+    .replace(/\bst\s*k\b/gi, "stk")
+    .replace(/\bst\.?\b/gi, "stk")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function validReceiptStkQuantity(value: number) {
+  return Number.isFinite(value) && value > 0 && value < 100 ? Math.floor(value) : 1;
+}
+
+
+type ReceiptStkQuantity = { quantity: number; unit: "stk" };
+
+function normalizeStkQuantityText(value: string) {
+  return normalizeReceiptOcrLine(value)
+    .toLowerCase()
+    .replace(/[,]/g, ".")
+    .replace(/\bst\s*k\b/g, "stk")
+    .replace(/\bs\s*t\s*k\b/g, "stk")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeBoughtQuantity(quantity: number) {
+  if (!Number.isFinite(quantity) || quantity < 1 || quantity > 99) return 1;
+  return Math.max(1, Math.floor(quantity));
+}
+
+function parseBoughtStkQuantityPrefix(value: string): ReceiptStkQuantity | null {
+  const normalized = normalizeStkQuantityText(value);
+
+  // Kjøpt antall må stå helt først. Dette hindrer at pakkestørrelser i varenavn
+  // tolkes som antall, f.eks. "Båtis multipack 5stk" eller "Libero 18stk".
+  const match =
+    normalized.match(/^(?:antall\s*)?(\d{1,3})(?:\.\d+)?\s*(?:stk|x|\*)\b/i) ??
+    normalized.match(/^(?:antall\s*)?(\d{1,3})(?:\.\d+)?\s+for\b/i);
+
+  if (!match) return null;
+  return { quantity: normalizeBoughtQuantity(Number(match[1])), unit: "stk" };
+}
+
+
+function parseReceiptQuantity(value: string): ReceiptStkQuantity {
+  return parseBoughtStkQuantityPrefix(value) ?? { quantity: 1, unit: "stk" };
+}
+
+function receiptLineLooksLikeQuantityOnly(line: string) {
+  const normalized = normalizeStkQuantityText(line);
+  if (!normalized) return false;
+  if (/(trumf|bonus|mva|tilbud|rabatt|fast|knallkjøp|knallkjop|sum|total)/i.test(normalized)) return false;
+
+  // Kiwi/Meny legger ofte antall på linjen etter varen: "1stk" eller "1 stk".
+  // Vi aksepterer bare rene antallslinjer, ikke produktnavn med pakkestørrelse.
+  return /^(?:antall\s*)?\d{1,3}(?:\.\d+)?\s*(?:stk|x|\*)\.?$/i.test(normalized) ||
+    /^(?:antall\s*)?\d{1,3}(?:\.\d+)?\s+for\.?$/i.test(normalized);
 }
 
 function normalizeStoreText(value: string) {
@@ -250,12 +333,34 @@ function extractReceiptPrices(line: string) {
 
 function cleanReceiptProductText(value: string) {
   return value
-    .replace(/^\d+\s*[xX*]\s*/g, "")
-    .replace(/\b\d+\s*(?:stk|x)\b/gi, "")
+    .replace(new RegExp(`${RECEIPT_STK_QUANTITY_MARKER}\\d{1,3}__`, "gi"), "")
+    .replace(/^\s*(?:antall\s*)?\d{1,3}(?:[,.]\d+)?\s*(?:stk|st\.?)\b\s*/gi, "")
+    .replace(/^\s*(?:antall\s*)?\d{1,3}(?:[,.]\d+)?\s*(?:[xX*]|for)\b\s*/gi, "")
     .replace(/\b(?:a|b|mva|mvafri|kg|stk)\b\s*$/gi, "")
     .replace(/[=*#]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function receiptProductTextLooksLikeProduct(value: string) {
+  const normalized = normalizeReceiptOcrLine(value).toLowerCase();
+  if (!normalized) return false;
+
+  // Footer/tax/bonus rows are often OCR-read as lines such as
+  // "6,14kr 15%" or "229k 25% 077k 306k 843kr - 185k".
+  // Those are not products, even if "kr" gives them letters.
+  if (/%/.test(normalized)) return false;
+  if (/\b(?:mva|bonus|bonusgrunnlag|grunnbonus|trumf|sum|total|kjopesum|kjøpesum|besparelser)\b/i.test(normalized)) return false;
+
+  const meaningfulWords = normalized
+    .replace(/\d+(?:[,.]\d+)?/g, " ")
+    .replace(/\b(?:kr|k|ore|øre|stk|st|kg|g|l|ml|mva|mvafri|a|b)\b/g, " ")
+    .replace(/[^a-zæøå]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter((word) => word.length >= 2);
+
+  return meaningfulWords.length > 0;
 }
 
 function buildReceiptCandidateLines(text: string) {
@@ -268,16 +373,24 @@ function buildReceiptCandidateLines(text: string) {
 
   for (let index = 0; index < sourceLines.length; index += 1) {
     const line = sourceLines[index];
-    candidates.push(line);
-
+    const next = sourceLines[index + 1];
     const prices = extractReceiptPrices(line);
     const hasLetters = /[a-zæøå]/i.test(line);
 
-    if (!prices.length && hasLetters) {
-      const next = sourceLines[index + 1];
-      if (next && extractReceiptPrices(next).length && !/[a-zæøå]{3,}/i.test(next)) {
-        candidates.push(`${line} ${next}`);
-      }
+    // Kiwi/Meny ser ut til å bruke denne formen:
+    //   Produktnavn                         27,80 kr
+    //   2 stk
+    // Da flytter vi "2 stk" foran linjen, slik at parseren kan regne 27,80 / 2.
+    if (prices.length && hasLetters && next && receiptLineLooksLikeQuantityOnly(next)) {
+      candidates.push(`${next} ${line}`);
+      continue;
+    }
+
+    candidates.push(line);
+
+    // OCR kan av og til dele produkt og pris over to linjer.
+    if (!prices.length && hasLetters && next && extractReceiptPrices(next).length && !/[a-zæøå]{3,}/i.test(next)) {
+      candidates.push(`${line} ${next}`);
     }
   }
 
@@ -286,31 +399,44 @@ function buildReceiptCandidateLines(text: string) {
 
 function parseReceiptText(text: string): ReceiptLine[] {
   const seen = new Set<string>();
+  const result: ReceiptLine[] = [];
 
-  return buildReceiptCandidateLines(text)
-    .map((line) => {
-      if (line.length < 4) return null;
-      if (receiptLineLooksLikeNoise(line) || receiptLineLooksLikeDiscount(line) || receiptLineLooksLikePaymentOrMeta(line)) return null;
+  for (const line of buildReceiptCandidateLines(text)) {
+    if (line.length < 4) continue;
+    if (receiptLineLooksLikeNoise(line) || receiptLineLooksLikeDiscount(line) || receiptLineLooksLikePaymentOrMeta(line)) continue;
 
-      const prices = extractReceiptPrices(line);
-      if (!prices.length) return null;
+    const prices = extractReceiptPrices(line);
+    if (!prices.length) continue;
 
-      const price = prices[prices.length - 1];
-      const textPart = cleanReceiptProductText(line.slice(0, price.index));
-      if (textPart.length < 3 || !/[a-zæøå]/i.test(textPart)) return null;
-      if (/^\d+(?:[,.]\d+)?\s*(?:kg|g|l|ml|stk)?$/i.test(textPart)) return null;
+    const price = prices[prices.length - 1];
+    const rawProductPart = line.slice(0, price.index);
+    const parsedQuantity = parseReceiptQuantity(rawProductPart);
+    const quantity = parsedQuantity.quantity;
+    const quantityUnit = parsedQuantity.unit;
+    const totalPrice = Number(price.value.toFixed(2));
+    const unitPrice = Number((totalPrice / quantity).toFixed(2));
+    const textPart = cleanReceiptProductText(rawProductPart);
 
-      const dedupeKey = `${textPart.toLowerCase()}-${price.value.toFixed(2)}`;
-      if (seen.has(dedupeKey)) return null;
-      seen.add(dedupeKey);
+    if (textPart.length < 3 || !/[a-zæøå]/i.test(textPart)) continue;
+    if (/^\d+(?:[,.]\d+)?\s*(?:kg|g|l|ml|stk)?$/i.test(textPart)) continue;
+    if (!receiptProductTextLooksLikeProduct(textPart)) continue;
 
-      return {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        text: textPart,
-        price: price.value
-      } satisfies ReceiptLine;
-    })
-    .filter((line): line is ReceiptLine => Boolean(line));
+    const dedupeKey = `${textPart.toLowerCase()}-${quantity}-${unitPrice.toFixed(2)}-${totalPrice.toFixed(2)}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+
+    result.push({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      text: textPart,
+      price: unitPrice,
+      quantity,
+      quantityUnit,
+      unitPrice,
+      totalPrice
+    });
+  }
+
+  return result;
 }
 
 function readReceiptCache(): ReceiptCache | null {
@@ -419,6 +545,77 @@ function captureVideoFrame(video: HTMLVideoElement) {
   return canvas.toDataURL("image/jpeg", 0.92);
 }
 
+function loadReceiptOcrImage(source: string | File) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    let objectUrl: string | null = null;
+
+    image.onload = () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      resolve(image);
+    };
+    image.onerror = () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      reject(new Error("Kunne ikke laste kvitteringsbildet for OCR."));
+    };
+
+    if (typeof source === "string") {
+      image.src = source;
+    } else {
+      objectUrl = URL.createObjectURL(source);
+      image.src = objectUrl;
+    }
+  });
+}
+
+async function preprocessReceiptImageForOcr(source: string | File) {
+  const image = await loadReceiptOcrImage(source);
+  const width = image.naturalWidth || image.width;
+  const height = image.naturalHeight || image.height;
+
+  if (!width || !height) return source;
+
+  // Trumf/Kiwi/Meny-kvitteringer har ofte små, tynne antallstall på egen linje
+  // (f.eks. "4 stk"). Forstørr og terskle bildet før OCR slik at enslige
+  // tall ikke forsvinner like lett.
+  const longSide = Math.max(width, height);
+  const scale = longSide < 1400 ? 3 : longSide < 2600 ? 2 : 1.35;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(width * scale);
+  canvas.height = Math.round(height * scale);
+
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return source;
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imageData.data;
+
+  for (let index = 0; index < data.length; index += 4) {
+    const r = data[index];
+    const g = data[index + 1];
+    const b = data[index + 2];
+    const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+    // Kontrastøkning + mild terskling. Bakgrunnen blir hvit, tekst blir mørk.
+    const contrasted = Math.max(0, Math.min(255, (luma - 128) * 1.45 + 128));
+    const value = contrasted < 182 ? 0 : 255;
+
+    data[index] = value;
+    data[index + 1] = value;
+    data[index + 2] = value;
+    data[index + 3] = 255;
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+  return canvas.toDataURL("image/png");
+}
+
 export default function MobileScanPage() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const analysisCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -431,6 +628,7 @@ export default function MobileScanPage() {
 
   const [mode, setMode] = useState<MobileMode>("in");
   const [cameraReady, setCameraReady] = useState(false);
+  const [cameraPaused, setCameraPaused] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [manualEan, setManualEan] = useState("");
@@ -457,9 +655,11 @@ export default function MobileScanPage() {
   const parsedReceiptLines = useMemo(() => parseReceiptText(receiptText), [receiptText]);
   const activeReceiptLines = receiptCache?.lines.filter((line) => !line.usedAt) ?? [];
   const receiptMinutesLeft = receiptCache ? Math.max(0, Math.ceil((Date.parse(receiptCache.expiresAt) - Date.now()) / 60000)) : 0;
-  const receiptStoreCandidates = useMemo(() => detectStoreCandidatesFromText(receiptText, storeOptions), [receiptText, storeOptions]);
-  const selectedReceiptStore = storeOptions.find((store) => store.storeKey === receiptStoreKey) ?? null;
-  const selectedShelfStore = storeOptions.find((store) => store.storeKey === shelfStoreKey) ?? null;
+  const activeStoreOptions = useMemo(() => storeOptions.filter((store) => store.isEnabled !== false), [storeOptions]);
+  const selectedReceiptStore = activeStoreOptions.find((store) => store.storeKey === receiptStoreKey) ?? null;
+  const selectedShelfStore = activeStoreOptions.find((store) => store.storeKey === shelfStoreKey) ?? null;
+  const receiptCaptureMode = mode === "receipt" && !receiptCache;
+  const receiptItemScanMode = mode === "receipt" && Boolean(receiptCache);
 
   function saveReceiptCache() {
     if (!selectedReceiptStore) {
@@ -468,7 +668,7 @@ export default function MobileScanPage() {
     }
 
     if (!receiptStoreVerified) {
-      setError("Bekreft butikk etter at kvitteringen er lest, slik at prisene ikke havner på feil butikk.");
+      setError("Velg butikk før kvitteringen skannes, slik at prisene ikke havner på feil butikk.");
       return;
     }
 
@@ -489,6 +689,11 @@ export default function MobileScanPage() {
     writeReceiptCache(cache);
     setReceiptCache(cache);
     setReceiptText("");
+    if (receiptImageUrl) URL.revokeObjectURL(receiptImageUrl);
+    setReceiptImageUrl(null);
+    setOcrStatus(null);
+    setReceiptDetected(false);
+    setReceiptCandidateScore(0);
     setError(null);
     setMessage(`${cache.lines.length} kvitteringslinjer lagret i 1 time. Skann EAN på varene for å koble prisene.`);
   }
@@ -522,7 +727,12 @@ export default function MobileScanPage() {
 
     try {
       const Tesseract = await import("tesseract.js");
-      const result = await Tesseract.recognize(source, "nor+eng", {
+      setOcrStatus("Forbedrer kvitteringsbildet før OCR...");
+      const ocrSource = await preprocessReceiptImageForOcr(source);
+      const result = await Tesseract.recognize(ocrSource, "nor+eng", {
+        preserve_interword_spaces: "1",
+        user_defined_dpi: "300",
+        tessedit_pageseg_mode: "6",
         logger: (progress: TesseractProgress) => {
           if (progress.status === "recognizing text" && typeof progress.progress === "number") {
             setOcrStatus(`Leser kvittering ${Math.round(progress.progress * 100)} %`);
@@ -530,22 +740,10 @@ export default function MobileScanPage() {
             setOcrStatus(progress.status);
           }
         }
-      });
+      } as Parameters<typeof Tesseract.recognize>[2]);
 
       const text = result.data.text.trim();
       setReceiptText(text);
-      const candidates = detectStoreCandidatesFromText(text, storeOptions);
-      setReceiptStoreVerified(false);
-      if (candidates.length === 1) {
-        setReceiptStoreKey(candidates[0].storeKey);
-        setStoreDetectionMessage(`Butikk foreslått: ${candidates[0].storeName}. Bekreft butikken før du lagrer.`);
-      } else if (candidates.length > 1) {
-        setReceiptStoreKey("");
-        setStoreDetectionMessage("Flere mulige butikker funnet. Velg riktig butikk før du lagrer.");
-      } else if (text) {
-        setReceiptStoreKey("");
-        setStoreDetectionMessage("Fant ikke sikker butikk i kvitteringen. Velg riktig lagret butikk manuelt.");
-      }
       setOcrStatus(text ? "Tekst lest. Sjekk linjene og lagre prisbufferen." : "OCR fant ikke tekst. Prøv et skarpere bilde.");
 
       if (parseReceiptText(text).length) {
@@ -565,6 +763,11 @@ export default function MobileScanPage() {
   }
 
   async function captureReceiptFromCamera() {
+    if (!selectedReceiptStore || !receiptStoreVerified) {
+      setError("Velg butikk før du skanner kvitteringen.");
+      return;
+    }
+
     const video = videoRef.current;
     if (!video) return;
 
@@ -725,7 +928,15 @@ export default function MobileScanPage() {
                 storeKey: receiptCache.storeKey,
                 storeName: receiptCache.storeName,
                 observedAt: receiptCache.createdAt,
-                lines: activeReceiptLines.map((line) => ({ id: line.id, text: line.text, price: line.price }))
+                lines: activeReceiptLines.map((line) => ({
+                  id: line.id,
+                  text: line.text,
+                  price: line.price,
+                  quantity: line.quantity,
+                  quantityUnit: line.quantityUnit,
+                  unitPrice: line.unitPrice,
+                  totalPrice: line.totalPrice
+                }))
               }
             : undefined
         })
@@ -745,8 +956,11 @@ export default function MobileScanPage() {
       setManualEan("");
 
       if (payload?.data?.receiptPriceMatch?.inserted) {
-        markReceiptLineUsed(payload.data.receiptPriceMatch.lineId, payload.data.product.name);
-        setMessage(`Piip! Pris fra kvittering matchet: ${payload.data.receiptPriceMatch.price.toFixed(2)} kr.`);
+        const receiptMatch = payload.data.receiptPriceMatch;
+        markReceiptLineUsed(receiptMatch.lineId, payload.data.product.name);
+        const quantityText = ` (${formatReceiptQuantity(receiptMatch.quantity, receiptMatch.quantityUnit ?? "stk")}${receiptMatch.quantity > 1 ? `, total ${formatReceiptPrice(receiptMatch.totalPrice)} kr` : ""})`;
+        const warningText = receiptMatch.warning ? ` ${receiptMatch.warning}` : "";
+        setMessage(`Piip! Pris fra kvittering matchet: ${formatReceiptPrice(receiptMatch.unitPrice)} kr/stk${quantityText}.${warningText}`);
       } else {
         setMessage(selectedMode === "in" ? "Piip! Lagt inn på lager." : "Piip! Tatt ut av lager.");
       }
@@ -758,8 +972,23 @@ export default function MobileScanPage() {
     }
   }
 
+  function stopCamera() {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setCameraReady(false);
+  }
+
+  async function scanNextItem() {
+    setCameraPaused(false);
+    setError(null);
+    setMessage("Klar for neste vare.");
+    await startCamera();
+  }
+
   async function startCamera() {
     setCameraError(null);
+    setCameraPaused(false);
 
     try {
       if (window.BarcodeDetector) {
@@ -800,11 +1029,10 @@ export default function MobileScanPage() {
     authFetch("/api/mobile/stores")
       .then((response) => response.json())
       .then((payload) => {
-        const stores = (payload?.data?.stores ?? []) as StoreOption[];
+        const stores = ((payload?.data?.stores ?? []) as StoreOption[]).filter((store) => store.isEnabled !== false);
         setStoreOptions(stores);
         setReceiptStoreKey("");
         setReceiptStoreVerified(false);
-        setShelfStoreKey("");
       })
       .catch(() => undefined);
   }, []);
@@ -816,6 +1044,18 @@ export default function MobileScanPage() {
   }, [mode]);
 
   useEffect(() => {
+    if (!cameraReady) return;
+
+    const timer = window.setTimeout(() => {
+      stopCamera();
+      setCameraPaused(true);
+      setMessage("Kameraet er pauset etter 1 minutt. Trykk Skann neste vare for å fortsette.");
+    }, 60_000);
+
+    return () => window.clearTimeout(timer);
+  }, [cameraReady]);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function loop() {
@@ -824,7 +1064,7 @@ export default function MobileScanPage() {
       const video = videoRef.current;
       const detector = detectorRef.current;
 
-      if (mode === "receipt" && cameraReady && video && video.readyState >= 2) {
+      if (receiptCaptureMode && selectedReceiptStore && cameraReady && video && video.readyState >= 2) {
         const now = Date.now();
         if (now - lastReceiptAnalysisAtRef.current > 450) {
           lastReceiptAnalysisAtRef.current = now;
@@ -847,25 +1087,13 @@ export default function MobileScanPage() {
         }
       }
 
-      if (mode === "shelf" && selectedShelfStore && !busy && cameraReady && video && detector && video.readyState >= 2 && !scanningRef.current) {
+      if ((mode !== "receipt" || receiptItemScanMode) && !busy && cameraReady && video && detector && video.readyState >= 2 && !scanningRef.current) {
         scanningRef.current = true;
         try {
           const codes = await detector.detect(video);
           const ean = cleanEan(codes[0]?.rawValue ?? "");
-          if (ean && ean !== shelfEan) setShelfEan(ean);
-        } catch {
-          // Ignore shelf barcode detection errors.
-        } finally {
-          scanningRef.current = false;
-        }
-      }
-
-      if (mode !== "receipt" && mode !== "shelf" && !busy && cameraReady && video && detector && video.readyState >= 2 && !scanningRef.current) {
-        scanningRef.current = true;
-        try {
-          const codes = await detector.detect(video);
-          const ean = cleanEan(codes[0]?.rawValue ?? "");
-          if (ean) await submitScan(ean, mode);
+          const selectedScanMode: ScanMode = receiptItemScanMode ? "in" : mode === "out" ? "out" : "in";
+          if (ean) await submitScan(ean, selectedScanMode);
         } catch {
           // Ignore single-frame scanner errors. The next animation frame tries again.
         } finally {
@@ -881,7 +1109,7 @@ export default function MobileScanPage() {
     return () => {
       cancelled = true;
     };
-  }, [busy, cameraReady, mode, receiptCache, selectedShelfStore, shelfEan]);
+  }, [busy, cameraReady, mode, receiptCache, receiptCaptureMode, receiptItemScanMode, selectedReceiptStore]);
 
   useEffect(() => {
     startCamera().catch(() => undefined);
@@ -901,12 +1129,12 @@ export default function MobileScanPage() {
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-300">Mobil lager</p>
             <h1 className="text-3xl font-black">Piip varer</h1>
           </div>
-          <a href="/inventory" className="rounded-full bg-white/10 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/15">
-            Lager
+          <a href="/dashboard" className="rounded-full bg-white/10 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/15">
+            Dashboard
           </a>
         </header>
 
-        <section className="mt-5 grid grid-cols-4 gap-2 rounded-3xl bg-white/8 p-2 ring-1 ring-white/10">
+        <section className="mt-5 grid grid-cols-3 gap-2 rounded-3xl bg-white/8 p-2 ring-1 ring-white/10">
           <button
             onClick={() => setMode("in")}
             className={`rounded-2xl px-3 py-4 text-left transition ${mode === "in" ? "bg-emerald-400 text-slate-950" : "bg-white/5 text-white"}`}
@@ -934,24 +1162,41 @@ export default function MobileScanPage() {
             <span className="text-xs opacity-80">Prisbuffer</span>
           </button>
 
-          <button
-            onClick={() => setMode("shelf")}
-            className={`rounded-2xl px-3 py-4 text-left transition ${mode === "shelf" ? "bg-violet-300 text-slate-950" : "bg-white/5 text-white"}`}
-          >
-            <span className="block text-3xl">▤</span>
-            <span className="mt-2 block text-base font-black">Hylle</span>
-            <span className="text-xs opacity-80">EAN + pris</span>
-          </button>
         </section>
 
+        {mode === "receipt" && !receiptCache ? (
+          <section className="mt-4 rounded-3xl bg-white p-4 text-slate-950 shadow-2xl">
+            <label className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Jeg er i butikk</label>
+            <select
+              value={receiptStoreKey}
+              onChange={(event) => {
+                const store = activeStoreOptions.find((candidate) => candidate.storeKey === event.target.value);
+                if (store) chooseReceiptStore(store);
+                else {
+                  setReceiptStoreKey("");
+                  setReceiptStoreVerified(false);
+                  setStoreDetectionMessage(null);
+                }
+              }}
+              className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-lg font-black outline-none focus:border-sky-500"
+            >
+              <option value="">Velg butikk før kvittering skannes</option>
+              {activeStoreOptions.map((store) => (
+                <option key={store.storeKey} value={store.storeKey}>{store.storeName}</option>
+              ))}
+            </select>
+            {!activeStoreOptions.length ? <p className="mt-3 rounded-2xl bg-amber-50 p-3 text-sm font-semibold text-amber-800">Ingen aktive butikker funnet. Aktiver butikker i Admin først.</p> : null}
+          </section>
+        ) : null}
+
         <section className="relative mt-5 overflow-hidden rounded-3xl bg-black ring-1 ring-white/10">
-          <video ref={videoRef} className="aspect-[3/4] w-full object-cover sm:aspect-video" muted playsInline />
-          {mode !== "receipt" && mode !== "shelf" ? (
+          <video ref={videoRef} className={`${receiptCaptureMode ? "aspect-[9/16] max-h-[72vh]" : "aspect-video"} w-full object-cover`} muted playsInline />
+          {!receiptCaptureMode || receiptItemScanMode ? (
             <div className="pointer-events-none absolute inset-x-8 top-1/2 h-28 -translate-y-1/2 rounded-3xl border-4 border-emerald-300/80 shadow-[0_0_0_999px_rgba(2,6,23,0.45)]" />
-          ) : mode === "receipt" ? (
-            <div className="pointer-events-none absolute inset-0 px-6 py-8">
+          ) : selectedReceiptStore ? (
+            <div className="pointer-events-none absolute inset-0 px-8 py-6">
               <div
-                className={`mx-auto flex h-full max-w-[72%] flex-col items-center justify-center rounded-3xl border-4 text-center shadow-[0_0_0_999px_rgba(2,6,23,0.40)] transition ${
+                className={`mx-auto flex h-full max-w-[58%] flex-col items-center justify-center rounded-3xl border-4 text-center shadow-[0_0_0_999px_rgba(2,6,23,0.40)] transition ${
                   receiptDetected ? "border-sky-300 bg-sky-300/20" : "border-white/45 bg-slate-950/15"
                 }`}
               >
@@ -963,17 +1208,20 @@ export default function MobileScanPage() {
               </div>
             </div>
           ) : (
-            <div className="pointer-events-none absolute inset-0 px-6 py-8">
-              <div className="mx-auto flex h-full max-w-[82%] flex-col items-center justify-center rounded-3xl border-4 border-violet-300 bg-violet-300/15 text-center shadow-[0_0_0_999px_rgba(2,6,23,0.40)]">
-                <p className="text-2xl font-black">Hyllekant</p>
-                <p className="mt-2 max-w-48 text-sm text-slate-100">Hold prisetiketten innenfor rammen. Skann barcode/EAN hvis den finnes, og les pris med OCR.</p>
-                {shelfEan ? <p className="mt-3 rounded-full bg-slate-950/70 px-3 py-1 text-xs font-bold">EAN: {shelfEan}</p> : null}
-              </div>
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-950/75 p-6 text-center">
+              <p className="rounded-3xl bg-sky-300 px-5 py-4 text-lg font-black text-slate-950">Velg butikk før kvittering</p>
             </div>
           )}
           <div className="absolute left-4 top-4 rounded-full bg-slate-950/75 px-4 py-2 text-sm font-bold">
-            {cameraReady ? `Klar: ${mobileModeText(mode)}` : "Starter kamera..."}
+            {cameraReady ? `Klar: ${mobileModeText(mode)}` : cameraPaused ? "Kameraet er pauset" : "Starter kamera..."}
           </div>
+          {cameraPaused ? (
+            <div className="absolute inset-0 grid place-items-center bg-slate-950/75 px-6 text-center">
+              <button type="button" onClick={scanNextItem} className="rounded-3xl bg-emerald-300 px-6 py-5 text-xl font-black text-slate-950">
+                Skann neste vare
+              </button>
+            </div>
+          ) : null}
           {busy || receiptProcessing ? (
             <div className="absolute inset-0 grid place-items-center bg-slate-950/70 px-6 text-center text-xl font-black">
               {receiptProcessing ? ocrStatus ?? "Leser kvittering..." : "Oppdaterer lager..."}
@@ -985,7 +1233,7 @@ export default function MobileScanPage() {
           <section className="mt-4 grid grid-cols-2 gap-2">
             <button
               onClick={captureReceiptFromCamera}
-              disabled={!cameraReady || receiptProcessing}
+              disabled={!cameraReady || receiptProcessing || !selectedReceiptStore || !receiptStoreVerified}
               className="rounded-2xl bg-sky-300 px-4 py-4 text-base font-black text-slate-950 disabled:opacity-50"
             >
               Ta bilde og les
@@ -1004,40 +1252,6 @@ export default function MobileScanPage() {
                   const url = URL.createObjectURL(file);
                   setReceiptImageUrl(url);
                   runReceiptOcr(file).catch(() => undefined);
-                }}
-                className="hidden"
-              />
-            </label>
-          </section>
-        ) : null}
-
-        {mode === "shelf" ? (
-          <section className="mt-4 grid grid-cols-2 gap-2">
-            <button
-              onClick={captureShelfFromCamera}
-              disabled={!cameraReady || receiptProcessing || !selectedShelfStore}
-              className="rounded-2xl bg-violet-300 px-4 py-4 text-base font-black text-slate-950 disabled:opacity-50"
-            >
-              Ta bilde og les
-            </button>
-            <label className="rounded-2xl bg-white/10 px-4 py-4 text-center text-base font-black text-white ring-1 ring-white/15">
-              Last opp fil
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (!file) return;
-                  if (!selectedShelfStore) {
-                    setError("Velg hvilken lagret butikk du står i før du leser hyllekant.");
-                    event.target.value = "";
-                    return;
-                  }
-                  if (shelfImageUrl) URL.revokeObjectURL(shelfImageUrl);
-                  const url = URL.createObjectURL(file);
-                  setShelfImageUrl(url);
-                  runShelfOcr(file).catch(() => undefined);
                 }}
                 className="hidden"
               />
@@ -1067,14 +1281,16 @@ export default function MobileScanPage() {
               {receiptCache.lines.slice(0, 12).map((line) => (
                 <div key={line.id} className={`flex justify-between gap-3 ${line.usedAt ? "opacity-45 line-through" : ""}`}>
                   <span className="min-w-0 truncate">{line.text}</span>
-                  <span className="font-black">{line.price.toFixed(2)}</span>
+                  <span className="shrink-0 text-right font-black">
+                    {formatReceiptQuantity(line.quantity, line.quantityUnit ?? "stk")} · {formatReceiptPrice(line.unitPrice ?? line.price)} kr/stk
+                  </span>
                 </div>
               ))}
             </div>
           </section>
         ) : null}
 
-        {mode === "receipt" ? (
+        {mode === "receipt" && !receiptCache ? (
           <section className="mt-4 rounded-3xl bg-white p-4 text-slate-950 shadow-2xl">
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Les kvittering</p>
             <h2 className="mt-1 text-2xl font-black">Midlertidig prisbuffer</h2>
@@ -1084,55 +1300,11 @@ export default function MobileScanPage() {
             </p>
 
             <div className="mt-4 grid gap-3">
-              <label className="text-sm font-bold text-slate-700">Butikk</label>
-              {storeDetectionMessage ? <div className="rounded-2xl bg-amber-50 p-3 text-sm font-semibold text-amber-800">{storeDetectionMessage}</div> : null}
-              {receiptStoreCandidates.length ? (
-                <div className="grid grid-cols-2 gap-2">
-                  {receiptStoreCandidates.map((store) => (
-                    <button
-                      key={store.storeKey}
-                      type="button"
-                      onClick={() => chooseReceiptStore(store)}
-                      className={`rounded-2xl px-4 py-3 text-left text-sm font-black ring-1 ${receiptStoreKey === store.storeKey ? "bg-sky-300 text-slate-950 ring-sky-400" : "bg-slate-50 text-slate-700 ring-slate-200"}`}
-                    >
-                      {store.storeName}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-              <select
-                value={receiptStoreKey}
-                onChange={(event) => {
-                  const store = storeOptions.find((candidate) => candidate.storeKey === event.target.value);
-                  if (store) chooseReceiptStore(store);
-                  else {
-                    setReceiptStoreKey("");
-                    setReceiptStoreVerified(false);
-                  }
-                }}
-                className="rounded-2xl border border-slate-200 px-4 py-3 text-lg font-semibold outline-none focus:border-sky-500"
-              >
-                <option value="">Velg butikk</option>
-                {storeOptions.map((store) => (
-                  <option key={store.storeKey} value={store.storeKey}>{store.storeName}</option>
-                ))}
-              </select>
-              {selectedReceiptStore && !receiptStoreVerified ? (
-                <button
-                  type="button"
-                  onClick={() => chooseReceiptStore(selectedReceiptStore)}
-                  className="rounded-2xl bg-sky-300 px-4 py-3 text-left text-sm font-black text-slate-950"
-                >
-                  Bekreft at kvitteringen er fra {selectedReceiptStore.storeName}
-                </button>
-              ) : null}
-              {!storeOptions.length ? (
-                <div className="rounded-2xl bg-red-50 p-3 text-sm font-semibold text-red-700">
-                  Ingen butikker er lagret i systemet. Legg til butikker i Admin før du importerer kvitteringer.
-                </div>
-              ) : null}
+              <div className="rounded-2xl bg-sky-50 p-3 text-sm font-semibold text-sky-800">
+                Butikk: <strong>{selectedReceiptStore?.storeName ?? "Ikke valgt"}</strong>
+              </div>
 
-              {receiptImageUrl ? <img src={receiptImageUrl} alt="" className="max-h-48 rounded-2xl border border-slate-200 object-contain" /> : null}
+              {receiptImageUrl ? <img src={receiptImageUrl} alt="" className="max-h-64 rounded-2xl border border-slate-200 object-contain" /> : null}
 
               {ocrStatus ? <div className="rounded-2xl bg-sky-50 p-3 text-sm font-semibold text-sky-800">{ocrStatus}</div> : null}
 
@@ -1142,15 +1314,7 @@ export default function MobileScanPage() {
                 onChange={(event) => {
                   const value = event.target.value;
                   setReceiptText(value);
-                  const candidates = detectStoreCandidatesFromText(value, storeOptions);
-                  setReceiptStoreVerified(false);
-                  if (candidates.length === 1) {
-                    setReceiptStoreKey(candidates[0].storeKey);
-                    setStoreDetectionMessage(`Butikk foreslått: ${candidates[0].storeName}. Bekreft butikken før du lagrer.`);
-                  } else if (candidates.length > 1) {
-                    setReceiptStoreKey("");
-                    setStoreDetectionMessage("Flere mulige butikker funnet. Velg riktig butikk før du lagrer.");
-                  }
+                  setStoreDetectionMessage(null);
                 }}
                 rows={9}
                 placeholder={"JASMINRIS 2KG ELDORADO 39.90\nLETTMELK 1.75L TINE 31.90"}
@@ -1172,144 +1336,12 @@ export default function MobileScanPage() {
           </section>
         ) : null}
 
-        {mode === "shelf" ? (
-          <section className="mt-4 rounded-3xl bg-white p-4 text-slate-950 shadow-2xl">
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Les hyllekant</p>
-            <h2 className="mt-1 text-2xl font-black">Hyllepris</h2>
-            <p className="mt-2 text-sm text-slate-600">
-              Velg butikken du står i. Appen prøver å lese pris fra hyllekanten og fange EAN/barcode hvis den er synlig.
-              Kontroller alltid EAN og pris før lagring.
-            </p>
-
-            <div className="mt-4 grid gap-3">
-              <label className="text-sm font-bold text-slate-700">Butikk</label>
-              <select
-                value={shelfStoreKey}
-                onChange={(event) => {
-                  const store = storeOptions.find((candidate) => candidate.storeKey === event.target.value);
-                  if (store) chooseShelfStore(store);
-                  else setShelfStoreKey("");
-                }}
-                className="rounded-2xl border border-slate-200 px-4 py-3 text-lg font-semibold outline-none focus:border-violet-500"
-              >
-                <option value="">Velg butikk</option>
-                {storeOptions.map((store) => (
-                  <option key={store.storeKey} value={store.storeKey}>{store.storeName}</option>
-                ))}
-              </select>
-              {!selectedShelfStore ? (
-                <div className="rounded-2xl bg-amber-50 p-3 text-sm font-semibold text-amber-800">
-                  Velg en lagret butikk før kamera/OCR brukes til hyllekant. Appen oppretter ikke nye butikker fra hyllemodus.
-                </div>
-              ) : null}
-              {!storeOptions.length ? (
-                <div className="rounded-2xl bg-red-50 p-3 text-sm font-semibold text-red-700">
-                  Ingen butikker er lagret i systemet. Legg til butikker i Admin før du lagrer hyllepriser.
-                </div>
-              ) : null}
-
-              {shelfImageUrl ? <img src={shelfImageUrl} alt="" className="max-h-48 rounded-2xl border border-slate-200 object-contain" /> : null}
-              {ocrStatus ? <div className="rounded-2xl bg-violet-50 p-3 text-sm font-semibold text-violet-800">{ocrStatus}</div> : null}
-
-              <label className="text-sm font-bold text-slate-700">EAN</label>
-              <input
-                inputMode="numeric"
-                value={shelfEan}
-                onChange={(event) => setShelfEan(cleanEan(event.target.value))}
-                className="rounded-2xl border border-slate-200 px-4 py-3 text-lg font-semibold outline-none focus:border-violet-500"
-                placeholder="Skann eller skriv EAN"
-              />
-
-              <label className="text-sm font-bold text-slate-700">Pris</label>
-              <input
-                inputMode="decimal"
-                value={shelfPrice}
-                onChange={(event) => setShelfPrice(event.target.value)}
-                className="rounded-2xl border border-slate-200 px-4 py-3 text-lg font-semibold outline-none focus:border-violet-500"
-                placeholder="39.90"
-              />
-
-              <label className="text-sm font-bold text-slate-700">OCR-tekst fra hyllekant</label>
-              <textarea
-                value={shelfText}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  setShelfText(value);
-                  const price = parseShelfPrice(value);
-                  const ean = parseShelfEan(value);
-                  if (price !== null) setShelfPrice(price.toFixed(2));
-                  if (ean && !shelfEan) setShelfEan(ean);
-                }}
-                rows={5}
-                className="rounded-2xl border border-slate-200 px-4 py-3 font-mono text-sm outline-none focus:border-violet-500"
-                placeholder={"Produktnavn\nEAN 703...\nKr 39,90"}
-              />
-
-              <button
-                onClick={saveShelfPrice}
-                disabled={busy || receiptProcessing || !selectedShelfStore || cleanEan(shelfEan).length < 6 || !parsePrice(shelfPrice)}
-                className="rounded-2xl bg-violet-300 px-5 py-4 text-lg font-black text-slate-950 disabled:opacity-50"
-              >
-                Lagre hyllepris
-              </button>
-            </div>
-          </section>
+        {error ? (
+          <div className="mt-4 rounded-2xl bg-red-300/15 p-4 text-sm font-bold text-red-100 ring-1 ring-red-200/20">
+            {error}
+          </div>
         ) : null}
 
-        <section className="mt-4 rounded-3xl bg-white p-4 text-slate-950 shadow-2xl">
-          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Status</p>
-          <p className="mt-1 text-xl font-black">{message}</p>
-          {error ? <p className="mt-2 rounded-2xl bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p> : null}
-
-          {lastResult ? (
-            <div className="mt-4 flex gap-3 rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
-              {lastResult.product.image_url ? (
-                <img src={lastResult.product.image_url} alt="" className="h-20 w-20 rounded-2xl bg-white object-contain" />
-              ) : (
-                <div className="h-20 w-20 rounded-2xl bg-slate-200" />
-              )}
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-lg font-black">{lastResult.product.name}</p>
-                <p className="text-sm text-slate-500">
-                  {[lastResult.product.brand, lastResult.product.package_size].filter(Boolean).join(" · ")}
-                </p>
-                <p className="mt-2 text-sm font-bold">
-                  {modeText(lastResult.mode)}: {lastResult.beforeQuantity} → {lastResult.afterQuantity}
-                </p>
-                {lastResult.receiptPriceMatch?.inserted ? (
-                  <p className="mt-1 text-xs font-semibold text-sky-700">
-                    Pris fra {lastResult.receiptPriceMatch.storeName}: {lastResult.receiptPriceMatch.price.toFixed(2)} kr.
-                  </p>
-                ) : null}
-                {lastResult.createdProduct ? (
-                  <p className="mt-1 text-xs font-semibold text-emerald-700">
-                    Nytt basisprodukt opprettet. {lastResult.priceObservationsInserted} priser lagret.
-                  </p>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
-        </section>
-
-        <section className="mt-4 rounded-3xl bg-white/8 p-4 ring-1 ring-white/10">
-          <label className="text-sm font-semibold text-slate-200">Manuell EAN hvis kamera ikke virker</label>
-          <div className="mt-2 flex gap-2">
-            <input
-              inputMode="numeric"
-              value={manualEan}
-              onChange={(event) => setManualEan(event.target.value)}
-              placeholder="Skriv/skann EAN"
-              className="min-w-0 flex-1 rounded-2xl border-0 bg-white px-4 py-3 text-lg font-semibold text-slate-950 outline-none"
-            />
-            <button
-              onClick={() => submitScan(manualEan)}
-              disabled={busy || cleanEan(manualEan).length < 6}
-              className="rounded-2xl bg-emerald-400 px-5 py-3 font-black text-slate-950 disabled:opacity-50"
-            >
-              Piip
-            </button>
-          </div>
-        </section>
       </div>
     </main>
   );
