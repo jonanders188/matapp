@@ -7,6 +7,9 @@ import { AppShell, StatCard } from "@/components/app-shell";
 import { kr } from "@/lib/utils";
 import type { KassalappProduct } from "@/lib/kassalapp";
 
+type CatalogSortKey = "name" | "brand" | "category" | "basis" | "missingImage" | "missingEan" | "latestPrice";
+type CatalogStatusFilter = "all" | "not-in-household" | "known" | "basis";
+
 type CatalogProduct = {
   id: string;
   name: string;
@@ -41,6 +44,8 @@ function productKey(product: CatalogProduct) {
 export default function CatalogPage() {
   const [catalogQuery, setCatalogQuery] = useState("");
   const [catalogProducts, setCatalogProducts] = useState<CatalogProduct[]>([]);
+  const [catalogSort, setCatalogSort] = useState<CatalogSortKey>("name");
+  const [catalogStatus, setCatalogStatus] = useState<CatalogStatusFilter>("all");
   const [kassalappQuery, setKassalappQuery] = useState("San Marzano");
   const [kassalappResults, setKassalappResults] = useState<KassalappProduct[]>([]);
   const [loadingCatalog, setLoadingCatalog] = useState(true);
@@ -145,18 +150,37 @@ export default function CatalogPage() {
     }, {});
   }, [kassalappResults]);
 
+  const visibleCatalogProducts = useMemo(() => {
+    const filtered = catalogProducts.filter((product) => {
+      if (catalogStatus === "basis") return Boolean(product.is_basis);
+      if (catalogStatus === "known") return product.is_in_household && !product.is_basis;
+      if (catalogStatus === "not-in-household") return !product.is_in_household;
+      return true;
+    });
+
+    return [...filtered].sort((a, b) => {
+      if (catalogSort === "basis") return Number(Boolean(b.is_basis)) - Number(Boolean(a.is_basis)) || a.name.localeCompare(b.name, "nb");
+      if (catalogSort === "missingImage") return Number(Boolean(a.image_url)) - Number(Boolean(b.image_url)) || a.name.localeCompare(b.name, "nb");
+      if (catalogSort === "missingEan") return Number(Boolean(a.ean)) - Number(Boolean(b.ean)) || a.name.localeCompare(b.name, "nb");
+      if (catalogSort === "latestPrice") return Number(b.latest_price ?? 0) - Number(a.latest_price ?? 0);
+      if (catalogSort === "brand") return `${a.brand ?? ""} ${a.name}`.localeCompare(`${b.brand ?? ""} ${b.name}`, "nb");
+      if (catalogSort === "category") return `${a.category ?? ""} ${a.name}`.localeCompare(`${b.category ?? ""} ${b.name}`, "nb");
+      return a.name.localeCompare(b.name, "nb");
+    });
+  }, [catalogProducts, catalogSort, catalogStatus]);
+
   const basisCount = catalogProducts.filter((product) => product.is_basis).length;
   const withPrices = catalogProducts.filter((product) => (product.price_observation_count ?? 0) > 0).length;
 
   return (
-    <AppShell active="Produktregister">
+    <AppShell active="Legg til varer">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Produktregister</h1>
-          <p className="mt-1 text-muted">Søk i globale produkter eller hent fra Kassalapp. Velg hvilke produkter som skal inn i basisutvalget.</p>
+          <h1 className="text-3xl font-bold">Legg til varer</h1>
+          <p className="mt-1 text-muted">Søk i globale produkter eller hent fra Kassalapp. Legg varer inn som basis når husholdningen skal følge dem opp.</p>
         </div>
         <Link href="/products" className="rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white">
-          Se basisutvalg
+          Se basisvarer
         </Link>
       </div>
 
@@ -172,7 +196,7 @@ export default function CatalogPage() {
       <section className="card mt-6 p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold">Søk i produktregister</h2>
+            <h2 className="text-lg font-semibold">Søk i globale produkter</h2>
             <p className="text-sm text-muted">Dette søker i produkter som allerede finnes i databasen.</p>
           </div>
         </div>
@@ -190,9 +214,38 @@ export default function CatalogPage() {
       </section>
 
       <section className="card mt-6 overflow-hidden">
-        <div className="border-b border-line p-4">
-          <h2 className="text-lg font-semibold">Globale produkter</h2>
-          <p className="text-sm text-muted">Produkter som tas ut av basisutvalget blir liggende her og kan legges inn igjen senere.</p>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line p-4">
+          <div>
+            <h2 className="text-lg font-semibold">Globale produkter</h2>
+            <p className="text-sm text-muted">Produkter som tas ut av basisvarene blir liggende her og kan legges inn igjen senere.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={catalogStatus}
+              onChange={(event) => setCatalogStatus(event.target.value as CatalogStatusFilter)}
+              className="rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+              aria-label="Filtrer produktregister"
+            >
+              <option value="all">Alle statuser</option>
+              <option value="not-in-household">Ikke i husholdning</option>
+              <option value="known">Kjent, ikke basis</option>
+              <option value="basis">I basis</option>
+            </select>
+            <select
+              value={catalogSort}
+              onChange={(event) => setCatalogSort(event.target.value as CatalogSortKey)}
+              className="rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+              aria-label="Sorter produktregister"
+            >
+              <option value="name">Sorter: Navn</option>
+              <option value="brand">Sorter: Merke</option>
+              <option value="category">Sorter: Kategori</option>
+              <option value="basis">Sorter: Basis først</option>
+              <option value="missingImage">Sorter: Mangler bilde</option>
+              <option value="missingEan">Sorter: Mangler EAN</option>
+              <option value="latestPrice">Sorter: Siste pris</option>
+            </select>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[980px] text-left text-sm">
@@ -206,7 +259,7 @@ export default function CatalogPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-line bg-white">
-              {catalogProducts.map((product) => (
+              {visibleCatalogProducts.map((product) => (
                 <tr key={productKey(product)}>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
@@ -244,7 +297,7 @@ export default function CatalogPage() {
                   </td>
                 </tr>
               ))}
-              {!loadingCatalog && !catalogProducts.length ? (
+              {!loadingCatalog && !visibleCatalogProducts.length ? (
                 <tr><td colSpan={5} className="px-4 py-10 text-center text-muted">Ingen produkter funnet.</td></tr>
               ) : null}
               {loadingCatalog ? (

@@ -121,12 +121,12 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 
     if (priceResult.error) throw priceResult.error;
 
-    const lowestByStore = new Map<string, { store_name: string; price: number; unit_price: number | null; observed_at: string; source: string | null; source_url: string | null }>();
+    const latestByStore = new Map<string, { store_name: string; price: number; unit_price: number | null; observed_at: string; source: string | null; source_url: string | null }>();
     for (const observation of priceResult.data ?? []) {
       const key = observation.store_code || observation.store_name;
-      const existing = lowestByStore.get(key);
-      if (!existing || Number(observation.price) < Number(existing.price)) {
-        lowestByStore.set(key, {
+      const existing = latestByStore.get(key);
+      if (!existing || String(observation.observed_at) > String(existing.observed_at)) {
+        latestByStore.set(key, {
           store_name: observation.store_name,
           price: observation.price,
           unit_price: observation.unit_price,
@@ -143,7 +143,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         household_product: householdProduct,
         inventory: inventoryResult.data ?? [],
         price_observations: priceResult.data ?? [],
-        lowest_by_store: Array.from(lowestByStore.values()).sort((a, b) => Number(a.price) - Number(b.price))
+        latest_by_store: Array.from(latestByStore.values()).sort((a, b) => String(b.observed_at).localeCompare(String(a.observed_at)))
       }
     });
   } catch (error) {

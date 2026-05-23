@@ -24,6 +24,9 @@ type ProductComparison = {
   imageUrl: string | null;
 };
 
+type ProductSortKey = "name" | "saving" | "missing" | "oldest" | "spread";
+type StoreSortKey = "rank" | "coverage" | "confidence" | "name";
+
 type StoreComparison = {
   store: string;
   storeKey: string;
@@ -85,6 +88,8 @@ export default function PricesPage() {
   const [data, setData] = useState<BasisPriceData>(emptyData);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [productSort, setProductSort] = useState<ProductSortKey>("missing");
+  const [storeSort, setStoreSort] = useState<StoreSortKey>("rank");
 
   async function loadPrices() {
     setLoading(true);
@@ -110,12 +115,38 @@ export default function PricesPage() {
   const visibleStores = useMemo(() => {
     return [...data.stores]
       .sort((a, b) => {
+        if (storeSort === "coverage") return b.coveragePct - a.coveragePct || a.store.localeCompare(b.store, "nb");
+        if (storeSort === "confidence") return b.comparableProductPairs - a.comparableProductPairs || a.store.localeCompare(b.store, "nb");
+        if (storeSort === "name") return a.store.localeCompare(b.store, "nb");
+
         const priorityDiff = a.priority - b.priority;
         if (priorityDiff !== 0) return priorityDiff;
         return a.store.localeCompare(b.store, "nb");
       })
       .slice(0, 6);
-  }, [data.stores]);
+  }, [data.stores, storeSort]);
+
+  const sortedProducts = useMemo(() => {
+    return [...data.products].sort((a, b) => {
+      if (productSort === "missing") {
+        return Number(a.lowestPrice !== null) - Number(b.lowestPrice !== null) || a.name.localeCompare(b.name, "nb");
+      }
+
+      if (productSort === "saving") return Number(b.saving ?? 0) - Number(a.saving ?? 0);
+      if (productSort === "oldest") {
+        const aAge = Math.max(0, ...Object.values(a.storePriceAgeDays).filter(Number.isFinite));
+        const bAge = Math.max(0, ...Object.values(b.storePriceAgeDays).filter(Number.isFinite));
+        return bAge - aAge || a.name.localeCompare(b.name, "nb");
+      }
+      if (productSort === "spread") {
+        const aSpread = (a.highestPrice ?? 0) - (a.lowestPrice ?? 0);
+        const bSpread = (b.highestPrice ?? 0) - (b.lowestPrice ?? 0);
+        return bSpread - aSpread || a.name.localeCompare(b.name, "nb");
+      }
+
+      return a.name.localeCompare(b.name, "nb");
+    });
+  }, [data.products, productSort]);
 
   const targetPriceHits = data.products.filter((product) => (
     product.lowestPrice !== null &&
@@ -125,7 +156,7 @@ export default function PricesPage() {
 
   const comparedSubtitle = data.productCount
     ? `${data.pricedProductCount} av ${data.productCount} basisvarer har pris`
-    : "Importer eller lagre produkter som basisutvalg";
+    : "Legg varer inn som basisvarer";
 
   return (
     <AppShell active="Priser">
@@ -133,12 +164,12 @@ export default function PricesPage() {
         <div>
           <h1 className="page-heading">Prissammenligning</h1>
           <p className="page-subtitle">
-            Sammenlign butikker basert på basisutvalget til Damgata 21D, ikke tilfeldige produkter.
+            Sammenlign butikker basert på basisvarene til Damgata 21D, ikke tilfeldige produkter.
           </p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row">
           <Link href="/products" className="rounded-xl border border-line px-4 py-2 text-sm font-medium text-brand">
-            Endre basisutvalg
+            Endre basisvarer
           </Link>
           <button onClick={loadPrices} className="rounded-xl border border-line px-4 py-2 text-sm font-medium text-brand">
             Oppdater
@@ -157,18 +188,45 @@ export default function PricesPage() {
 
       <div className="mt-6 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
         <section className="card overflow-hidden">
-          <div className="border-b border-line p-5">
-            <h2 className="section-title">Basisutvalg per butikk</h2>
-            <p className="text-sm leading-6 text-muted">
-              Tabellen viser priser fra de siste 30 dagene. Bare priser som er maks 14 dager gamle kan vinne beste pris.
-            </p>
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line p-5">
+            <div>
+              <h2 className="section-title">Basisvarer per butikk</h2>
+              <p className="text-sm leading-6 text-muted">
+                Tabellen viser priser fra de siste 30 dagene. Bare priser som er maks 14 dager gamle kan vinne beste pris.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <select
+                value={productSort}
+                onChange={(event) => setProductSort(event.target.value as ProductSortKey)}
+                className="rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+                aria-label="Sorter produkter i prissammenligning"
+              >
+                <option value="missing">Sorter: Manglende pris</option>
+                <option value="spread">Sorter: Størst prisforskjell</option>
+                <option value="saving">Sorter: Størst besparelse</option>
+                <option value="oldest">Sorter: Eldste pris</option>
+                <option value="name">Sorter: Navn</option>
+              </select>
+              <select
+                value={storeSort}
+                onChange={(event) => setStoreSort(event.target.value as StoreSortKey)}
+                className="rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+                aria-label="Sorter butikker"
+              >
+                <option value="rank">Butikker: Billigst</option>
+                <option value="coverage">Butikker: Dekning</option>
+                <option value="confidence">Butikker: Datagrunnlag</option>
+                <option value="name">Butikker: Navn</option>
+              </select>
+            </div>
           </div>
 
           {loading ? <div className="p-10 text-center text-muted">Laster prissammenligning...</div> : null}
 
           {!loading && data.productCount === 0 ? (
             <div className="p-10 text-center text-muted">
-              Ingen produkter i basisutvalget ennå. Gå til <Link href="/products" className="font-semibold text-brand">Produkter</Link> og importer eller merk varer som basis.
+              Ingen basisvarer ennå. Gå til <Link href="/products" className="font-semibold text-brand">Basisvarer</Link> og legg inn varer som basis.
             </div>
           ) : null}
 
@@ -182,7 +240,7 @@ export default function PricesPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line">
-                  {data.products.map((product) => (
+                  {sortedProducts.map((product) => (
                     <tr key={product.productId} className="hover:bg-slate-50">
                       <td className="p-4">
                         <div className="flex items-center gap-3">
@@ -299,7 +357,7 @@ export default function PricesPage() {
               Prissammenligningen bruker bare produkter som ligger i basisutvalget. Butikkrangeringen bruker en parvis prisindeks: hvert butikkpar sammenlignes bare på produktene der begge har gyldig pris siste 14 dager. Par med færre enn 3 felles produkter hoppes over. Priser mellom 15 og 30 dager vises bare som gammel fallback i produkttabellen, men teller ikke i rangeringen.
             </p>
             <Link href="/products" className="mt-4 inline-flex rounded-xl border border-line px-4 py-2 text-sm font-medium text-brand">
-              Administrer basisutvalg
+              Administrer basisvarer
             </Link>
           </section>
         </aside>

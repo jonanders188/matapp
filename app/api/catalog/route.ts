@@ -47,46 +47,7 @@ export async function GET(request: Request) {
     const productsResult = await productsQuery;
     if (productsResult.error) throw productsResult.error;
 
-    let products = (productsResult.data ?? []) as ProductRow[];
-
-    // Default catalog view should never hide active basis products just because
-    // they fall outside the first global products page. Search results are still
-    // limited to matching products, but the initial /catalog page should include
-    // every active household basis product before filling with global products.
-    if (!query) {
-      const activeBasisResult = await supabase
-        .from("household_products")
-        .select("product_id")
-        .eq("household_id", householdId)
-        .eq("is_basis", true)
-        .order("updated_at", { ascending: false });
-
-      if (activeBasisResult.error) throw activeBasisResult.error;
-
-      const activeBasisIds = (activeBasisResult.data ?? [])
-        .map((row) => row.product_id)
-        .filter(Boolean) as string[];
-      const productsById = new Map(products.map((product) => [product.id, product]));
-      const missingBasisIds = activeBasisIds.filter((productId) => !productsById.has(productId));
-
-      if (missingBasisIds.length) {
-        const missingBasisProductsResult = await supabase
-          .from("products")
-          .select("id, name, brand, ean, category, package_size, image_url, created_at")
-          .in("id", missingBasisIds);
-
-        if (missingBasisProductsResult.error) throw missingBasisProductsResult.error;
-        for (const product of (missingBasisProductsResult.data ?? []) as ProductRow[]) {
-          productsById.set(product.id, product);
-        }
-      }
-
-      const activeBasisProducts = activeBasisIds
-        .map((productId) => productsById.get(productId))
-        .filter(Boolean) as ProductRow[];
-      const otherProducts = products.filter((product) => !activeBasisIds.includes(product.id));
-      products = [...activeBasisProducts, ...otherProducts].slice(0, Math.max(80, activeBasisProducts.length));
-    }
+    const products = (productsResult.data ?? []) as ProductRow[];
 
     const productIds = products.map((product) => product.id);
 

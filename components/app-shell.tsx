@@ -22,17 +22,17 @@ const navSections: { title: string; items: NavItem[] }[] = [
   {
     title: "Daglig bruk",
     items: [
-      { label: "Priser", href: "/prices", icon: Tags, aliases: ["Prissammenligning"], description: "Billigste butikk" }
+      { label: "Lager", href: "/inventory", icon: Box, aliases: ["Inventory"], description: "Hva dere har" },
+      { label: "Priser", href: "/prices", icon: Tags, aliases: ["Prissammenligning"], description: "Billigste butikk" },
+      { label: "Skann hjemme", href: "/mobile2", icon: Smartphone, aliases: ["Mobile2", "Mobil lager"], description: "Inn, ut og kvittering" },
+      { label: "Skann i butikk", href: "/mobile", icon: Smartphone, aliases: ["Mobile", "Mobil butikk"], description: "Oppdater butikkpris" }
     ]
   },
   {
     title: "Varer",
     items: [
-      { label: "Basisutvalg", href: "/products", icon: PackageSearch, aliases: ["Produkter"], description: "Husholdningens varer" },
-      { label: "Produktregister", href: "/catalog", icon: Database, aliases: ["Katalog"], description: "Søk og legg til" },
-      { label: "Lager", href: "/inventory", icon: Box, description: "Hva dere har" },
-      { label: "Skann i butikk", href: "/mobile", icon: Smartphone, aliases: ["Mobile", "Mobil butikk"], description: "Pris og hyllekant" },
-      { label: "Skann hjemme", href: "/mobile2", icon: Smartphone, aliases: ["Mobile2", "Mobil lager"], description: "Inn og ut av lager" },
+      { label: "Basisvarer", href: "/products", icon: PackageSearch, aliases: ["Basisutvalg", "Produkter"], description: "Faste husholdningsvarer" },
+      { label: "Legg til varer", href: "/catalog", icon: Database, aliases: ["Produktregister", "Katalog"], description: "Søk i produktregister" }
     ]
   },
   {
@@ -44,7 +44,7 @@ const navSections: { title: string; items: NavItem[] }[] = [
 ];
 
 const quickActions = [
-  { label: "Skann i butikk", href: "/mobile" },
+  { label: "Lager", href: "/inventory" },
   { label: "Skann hjemme", href: "/mobile2" },
   { label: "Legg til vare", href: "/catalog" }
 ] as const;

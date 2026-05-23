@@ -6,6 +6,8 @@ import { useEffect, useMemo, useState } from "react";
 import { AppShell, StatCard } from "@/components/app-shell";
 import { kr } from "@/lib/utils";
 
+type BasisSortKey = "name" | "category" | "desired" | "target" | "latest" | "missingPrice" | "updated";
+
 type BasisProduct = {
   id: string;
   name: string;
@@ -38,6 +40,7 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [sortKey, setSortKey] = useState<BasisSortKey>("name");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -99,9 +102,25 @@ export default function ProductsPage() {
 
   const filteredProducts = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery) return products;
-    return products.filter((product) => `${product.name} ${product.brand ?? ""} ${product.ean ?? ""} ${product.category ?? ""}`.toLowerCase().includes(normalizedQuery));
-  }, [products, query]);
+    const matches = products.filter((product) => {
+      const haystack = `${product.name} ${product.brand ?? ""} ${product.ean ?? ""} ${product.category ?? ""}`.toLowerCase();
+      return !normalizedQuery || haystack.includes(normalizedQuery);
+    });
+
+    return [...matches].sort((a, b) => {
+      if (sortKey === "missingPrice") {
+        return Number((a.price_observation_count ?? 0) > 0) - Number((b.price_observation_count ?? 0) > 0);
+      }
+
+      if (sortKey === "desired") return Number(b.desired_stock ?? 0) - Number(a.desired_stock ?? 0);
+      if (sortKey === "target") return Number(b.target_price ?? 0) - Number(a.target_price ?? 0);
+      if (sortKey === "latest") return Number(b.latest_price ?? 0) - Number(a.latest_price ?? 0);
+      if (sortKey === "updated") return String(b.latest_observed_at ?? "").localeCompare(String(a.latest_observed_at ?? ""), "nb");
+      if (sortKey === "category") return `${a.category ?? ""} ${a.name}`.localeCompare(`${b.category ?? ""} ${b.name}`, "nb");
+
+      return a.name.localeCompare(b.name, "nb");
+    });
+  }, [products, query, sortKey]);
 
   const productsWithPrices = products.filter((product) => (product.price_observation_count ?? 0) > 0).length;
   const desiredTotal = products.reduce((sum, product) => sum + Number(product.desired_stock ?? 0), 0);
@@ -112,15 +131,15 @@ export default function ProductsPage() {
     .at(-1);
 
   return (
-    <AppShell active="Basisutvalg">
+    <AppShell active="Basisvarer">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Basisutvalg</h1>
-          <p className="mt-1 text-muted">Dette er husholdningens aktive varer. Lager, priser og synk kjøres bare mot disse produktene.</p>
+          <h1 className="text-3xl font-bold">Basisvarer</h1>
+          <p className="mt-1 text-muted">Dette er husholdningens faste varer. Lager, målpris og basisprissynk styres her.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Link href="/catalog" className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-            Finn produkt
+            Legg til vare
           </Link>
           <button
             onClick={syncBasisPrices}
@@ -145,15 +164,31 @@ export default function ProductsPage() {
       <section className="card mt-6 overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line p-4">
           <div>
-            <h2 className="text-lg font-semibold">Aktive basisvarer</h2>
-            <p className="text-sm text-muted">Ta en vare ut av basis for å stoppe lagerstyring og basispris-synk. Produktet slettes ikke.</p>
+            <h2 className="text-lg font-semibold">Faste basisvarer</h2>
+            <p className="text-sm text-muted">Sorter, rediger og rydd i varene husholdningen faktisk følger opp.</p>
           </div>
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Søk i basisutvalg..."
-            className="min-w-[240px] rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-brand"
-          />
+          <div className="flex flex-wrap gap-2">
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Søk i basisvarer..."
+              className="min-w-[240px] rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-brand"
+            />
+            <select
+              value={sortKey}
+              onChange={(event) => setSortKey(event.target.value as BasisSortKey)}
+              className="rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+              aria-label="Sorter basisvarer"
+            >
+              <option value="name">Sorter: Navn</option>
+              <option value="category">Sorter: Kategori</option>
+              <option value="missingPrice">Sorter: Mangler pris først</option>
+              <option value="desired">Sorter: Ønsket lager</option>
+              <option value="target">Sorter: Målpris</option>
+              <option value="latest">Sorter: Siste pris</option>
+              <option value="updated">Sorter: Sist oppdatert</option>
+            </select>
+          </div>
         </div>
 
         <div className="overflow-x-auto">

@@ -54,7 +54,7 @@ type DetailPayload = {
   product: Product;
   inventory: InventoryItem[];
   price_observations: Observation[];
-  lowest_by_store: Array<{ store_name: string; price: number; unit_price: number | null; observed_at: string; source: string | null; source_url: string | null }>;
+  latest_by_store: Array<{ store_name: string; price: number; unit_price: number | null; observed_at: string; source: string | null; source_url: string | null }>;
 };
 
 function shortDate(value?: string | null) {
@@ -183,6 +183,66 @@ export default function ProductRulesPage() {
     await load();
   }
 
+  async function editPriceObservation(observation: Observation) {
+    const priceText = window.prompt("Ny siste pris", String(observation.price).replace(".", ","));
+    if (priceText === null) return;
+
+    const price = Number(priceText.replace(",", "."));
+    if (!Number.isFinite(price) || price <= 0) {
+      setError("Pris må være større enn 0.");
+      return;
+    }
+
+    const storeName = window.prompt("Butikk", observation.store_name);
+    if (storeName === null) return;
+
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+
+    const response = await authFetch(`/api/products/${productId}/prices/${observation.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        price,
+        unit_price: observation.unit_price,
+        store_name: storeName
+      })
+    });
+
+    const payload = await response.json().catch(() => null);
+    setSaving(false);
+
+    if (!response.ok) {
+      setError(payload?.error ?? "Kunne ikke endre siste pris");
+      return;
+    }
+
+    setMessage("Siste pris er oppdatert manuelt.");
+    await load();
+  }
+
+  async function deletePriceObservation(observation: Observation) {
+    const ok = window.confirm(`Slette siste pris fra ${observation.store_name} (${kr(observation.price)})?`);
+    if (!ok) return;
+
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+
+    const response = await authFetch(`/api/products/${productId}/prices/${observation.id}`, { method: "DELETE" });
+    const payload = await response.json().catch(() => null);
+    setSaving(false);
+
+    if (!response.ok) {
+      setError(payload?.error ?? "Kunne ikke slette pris");
+      return;
+    }
+
+    setMessage("Prisobservasjonen er slettet.");
+    await load();
+  }
+
   useEffect(() => {
     load().catch(() => undefined);
   }, [productId]);
@@ -196,14 +256,17 @@ export default function ProductRulesPage() {
   }, [data]);
 
   return (
-    <AppShell active="Basisutvalg">
+    <AppShell active="Basisvarer">
       <div className="flex items-start justify-between gap-6">
         <div>
-          <Link href="/products" className="text-sm font-medium text-brand">← Tilbake til basisutvalg</Link>
-          <h1 className="mt-3 text-3xl font-bold">Produkt i basisutvalg</h1>
-          <p className="mt-1 text-muted">Sett målpris, lagergrenser og om produktet skal være med i basisutvalget.</p>
+          <Link href="/products" className="text-sm font-medium text-brand">← Tilbake til basisvarer</Link>
+          <h1 className="mt-3 text-3xl font-bold">Produkt i basisvarer</h1>
+          <p className="mt-1 text-muted">Sett målpris, lagergrenser og om produktet skal være med i basisvarene.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Link href={`/products/${productId}/assessment`} className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-brand hover:bg-emerald-100">
+            AI-vurdering
+          </Link>
           <button onClick={syncProduct} disabled={syncing || loading} className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60">
             {syncing ? "Synker..." : "Synk pris for produkt"}
           </button>
@@ -228,7 +291,7 @@ export default function ProductRulesPage() {
               <h2 className="mt-4 text-xl font-semibold">{data.product.name}</h2>
               <p className="mt-1 text-sm text-muted">{data.product.brand ?? "Ukjent merke"} · EAN {data.product.ean ?? "mangler"}</p>
               <div className="mt-4 flex flex-wrap gap-2">
-                {data.product.is_basis ? <span className="pill bg-emerald-50 text-brand">Basisutvalg</span> : <span className="pill bg-slate-100 text-muted">Ikke basis</span>}
+                {data.product.is_basis ? <span className="pill bg-emerald-50 text-brand">Basisvarer</span> : <span className="pill bg-slate-100 text-muted">Ikke basis</span>}
                 {data.product.is_freezable ? <span className="pill bg-sky-50 text-sky-700">Kan fryses</span> : null}
                 {data.product.category ? <span className="pill bg-slate-50 text-muted">{data.product.category}</span> : null}
               </div>
@@ -244,8 +307,8 @@ export default function ProductRulesPage() {
 
           <div className="mt-6 grid grid-cols-[1fr_420px] gap-5">
             <section className="card p-5">
-              <h2 className="text-lg font-semibold">Basisutvalg, regler og målpris</h2>
-              <p className="mt-1 text-sm text-muted">Når Basisutvalg er på, brukes varen i lager, anbefalinger og automatisk handleliste. Slå av for å fjerne den fra basisutvalget uten å slette produktet.</p>
+              <h2 className="text-lg font-semibold">Basisvarer, regler og målpris</h2>
+              <p className="mt-1 text-sm text-muted">Når Basisvarer er på, brukes varen i lager, anbefalinger og automatisk handleliste. Slå av for å fjerne den fra basisvarene uten å slette produktet.</p>
 
               <div className="mt-5 grid grid-cols-2 gap-4">
                 <label className="space-y-1 text-sm"><span className="font-medium">Produktnavn</span><input className="w-full rounded-xl border border-line px-3 py-2" value={String(form.name ?? "")} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
@@ -295,18 +358,29 @@ export default function ProductRulesPage() {
 
             <aside className="space-y-5">
               <section className="card p-5">
-                <h2 className="font-semibold">Laveste pris per butikk</h2>
+                <h2 className="font-semibold">Siste prisregistreringer</h2>
+                <p className="mt-1 text-sm text-muted">Produktet viser siste opplastede pris. Admin kan korrigere eller slette feil pris.</p>
                 <div className="mt-4 space-y-2">
-                  {data.lowest_by_store.slice(0, 8).map((item) => (
-                    <div key={`${item.store_name}-${item.observed_at}`} className="flex items-center justify-between rounded-xl bg-slate-50 p-3 text-sm">
-                      <div>
-                        <p className="font-medium">{item.store_name}</p>
-                        <p className="text-xs text-muted">{shortDateTime(item.observed_at)} · {priceSourceLabel(item.source)}</p>
+                  {data.price_observations.slice(0, 8).map((item) => (
+                    <div key={item.id} className="rounded-xl bg-slate-50 p-3 text-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium">{item.store_name}</p>
+                          <p className="text-xs text-muted">{shortDateTime(item.observed_at)} · {priceSourceLabel(item.source)}</p>
+                        </div>
+                        <p className="font-bold text-brand">{kr(item.price)}</p>
                       </div>
-                      <p className="font-bold text-brand">{kr(item.price)}</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button type="button" onClick={() => editPriceObservation(item)} className="rounded-lg border border-line px-3 py-1 text-xs font-semibold text-slate-700">
+                          Endre
+                        </button>
+                        <button type="button" onClick={() => deletePriceObservation(item)} className="rounded-lg border border-rose-200 px-3 py-1 text-xs font-semibold text-rose-700">
+                          Slett
+                        </button>
+                      </div>
                     </div>
                   ))}
-                  {!data.lowest_by_store.length ? <p className="text-sm text-muted">Ingen prisobservasjoner ennå.</p> : null}
+                  {!data.price_observations.length ? <p className="text-sm text-muted">Ingen prisobservasjoner ennå.</p> : null}
                 </div>
               </section>
 

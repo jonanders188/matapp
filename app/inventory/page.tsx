@@ -218,20 +218,20 @@ export default function InventoryPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="page-heading">Lager</h1>
-          <p className="page-subtitle">Hele basisutvalget vises her. Endre beholdning og ønsket behov direkte i tabellen.</p>
+          <p className="page-subtitle">Dette er fysisk beholdning hjemme. Endre antall, ønsket nivå og plassering direkte i tabellen.</p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row">
           <button onClick={() => void loadInventory()} className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-            Oppdater lager
+            Oppdater
           </button>
-          <a href="/products" className="rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white">
-            Legg til produkter
+          <a href="/catalog" className="rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white">
+            Legg til varer
           </a>
         </div>
       </div>
 
       <div className="mt-6 grid gap-5 lg:grid-cols-4">
-        <StatCard title="Basisvarer" value={String(stats.total)} subtitle="Alle varer i basisutvalget" />
+        <StatCard title="Basisvarer" value={String(stats.total)} subtitle="Varer som følges opp" />
         <StatCard title="Lavt lager" value={String(stats.low)} subtitle="Under ønsket nivå" tone="amber" />
         <StatCard title="Tomt" value={String(stats.empty)} subtitle="Bør fylles på" tone="red" />
         <StatCard title="Trenger påfyll" value={String(stats.needsRestock)} subtitle="Tomt eller lavt" tone="purple" />
@@ -266,7 +266,7 @@ export default function InventoryPage() {
             <tbody className="divide-y divide-line">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-muted">Henter basisutvalg...</td>
+                  <td colSpan={7} className="p-8 text-center text-muted">Henter lager...</td>
                 </tr>
               ) : filtered.length ? (
                 filtered.map((item) => {

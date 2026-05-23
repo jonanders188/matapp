@@ -59,6 +59,74 @@ type ReceiptCache = {
   lines: ReceiptLine[];
 };
 
+type ReceiptImportLine = {
+  id: string;
+  name?: string;
+  text?: string;
+  price?: number;
+  quantity: number;
+  quantityUnit?: "stk";
+  unitPrice: number;
+  totalPrice?: number;
+  lineTotal?: number;
+  warning?: string | null;
+};
+
+type ReceiptImportProduct = {
+  productId: string;
+  ean: string | null;
+  name: string;
+  brand: string | null;
+  category: string | null;
+  packageSize: string | null;
+  latestPrice: number | null;
+  latestStorePrice: number | null;
+  medianPrice: number | null;
+  medianStorePrice: number | null;
+  minRecentPrice: number | null;
+  maxRecentPrice: number | null;
+  priceObservationCount: number;
+};
+
+type ReceiptImportMatch = {
+  receiptLineId: string;
+  productId: string | null;
+  confidence: number;
+  priceStatus: "normal" | "plausible_store_difference" | "suspicious" | "unknown";
+  shouldAutoImport: boolean;
+  reason: string;
+  warning: string | null;
+  line: ReceiptImportLine | null;
+  product: ReceiptImportProduct | null;
+};
+
+type ReceiptImportPreview = {
+  needsStoreConfirmation: boolean;
+  reason?: string | null;
+  detectedStoreName?: string | null;
+  detectedStoreKey?: string | null;
+  storeConfidence?: number;
+  stores?: StoreOption[];
+  storeKey?: string;
+  storeName?: string;
+  receiptDate?: string | null;
+  observedAt?: string;
+  linesRead: number;
+  basisCandidates?: number;
+  secureMatches?: ReceiptImportMatch[];
+  reviewMatches?: ReceiptImportMatch[];
+  unmatchedLines?: ReceiptImportLine[];
+  remainingLines?: ReceiptImportLine[];
+  importedCount?: number;
+  importConfirmed?: boolean;
+  warnings?: string[];
+};
+
+type ReceiptImportResponse = {
+  data?: ReceiptImportPreview;
+  error?: string;
+};
+
 type StoreOption = {
   storeKey: string;
   storeName: string;
@@ -464,6 +532,22 @@ function parseReceiptText(text: string): ReceiptLine[] {
   return result;
 }
 
+function receiptLineFromImportLine(line: ReceiptImportLine): ReceiptLine {
+  const unitPrice = Number(line.unitPrice ?? line.price ?? 0);
+  const quantity = normalizeBoughtQuantity(Number(line.quantity ?? 1));
+  const totalPrice = Number(line.totalPrice ?? line.lineTotal ?? unitPrice * quantity);
+
+  return {
+    id: line.id,
+    text: String(line.text ?? line.name ?? "Ukjent vare"),
+    price: unitPrice,
+    quantity,
+    quantityUnit: "stk",
+    unitPrice,
+    totalPrice: Number.isFinite(totalPrice) && totalPrice > 0 ? totalPrice : unitPrice * quantity
+  };
+}
+
 function receiptLineFromAiItem(item: ReceiptAiItem, index: number): ReceiptLine | null {
   const name = String(item.name ?? "").replace(/\s+/g, " ").trim();
   if (name.length < 3) return null;
@@ -716,6 +800,9 @@ export default function MobileScanPage() {
   const [receiptStoreKey, setReceiptStoreKey] = useState("");
   const [receiptStoreVerified, setReceiptStoreVerified] = useState(false);
   const [receiptCache, setReceiptCache] = useState<ReceiptCache | null>(null);
+  const [receiptImportPreview, setReceiptImportPreview] = useState<ReceiptImportPreview | null>(null);
+  const [receiptImportImageBase64, setReceiptImportImageBase64] = useState<string | null>(null);
+  const [receiptImportStoreKey, setReceiptImportStoreKey] = useState("");
   const [receiptImageUrl, setReceiptImageUrl] = useState<string | null>(null);
   const [receiptDetected, setReceiptDetected] = useState(false);
   const [receiptCandidateScore, setReceiptCandidateScore] = useState(0);
@@ -735,7 +822,7 @@ export default function MobileScanPage() {
   const activeStoreOptions = useMemo(() => storeOptions.filter((store) => store.isEnabled !== false), [storeOptions]);
   const selectedReceiptStore = storeOptions.find((store) => store.storeKey === receiptStoreKey) ?? null;
   const selectedShelfStore = activeStoreOptions.find((store) => store.storeKey === shelfStoreKey) ?? null;
-  const receiptCaptureMode = mode === "receipt" && !receiptCache;
+  const receiptCaptureMode = mode === "receipt" && !receiptCache && !receiptImportPreview;
   const receiptItemScanMode = mode === "receipt" && Boolean(receiptCache);
 
   function saveReceiptCache() {
@@ -779,6 +866,9 @@ export default function MobileScanPage() {
   function clearReceiptCache() {
     writeReceiptCache(null);
     setReceiptCache(null);
+    setReceiptImportPreview(null);
+    setReceiptImportImageBase64(null);
+    setReceiptImportStoreKey("");
     setMessage("Midlertidig kvittering er tømt.");
   }
 
@@ -803,52 +893,41 @@ export default function MobileScanPage() {
     setError(null);
     setReceiptAiLines(null);
     setReceiptText("");
-    setOcrStatus("Leser kvittering med AI...");
+    setReceiptImportPreview(null);
+    setReceiptImportImageBase64(null);
+    setReceiptImportStoreKey("");
+    setOcrStatus("Leser kvittering og matcher mot basisvarer med AI...");
 
     try {
       const imageBase64 = await imageSourceToDataUrl(source);
-      const aiResponse = await authFetch("/api/mobile/receipt-ai", {
+      setReceiptImportImageBase64(imageBase64);
+
+      const response = await authFetch("/api/mobile/receipt-import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ imageBase64 })
       });
 
-      const aiPayload = (await aiResponse.json().catch(() => null)) as ReceiptAiResponse | null;
+      const payload = (await response.json().catch(() => null)) as ReceiptImportResponse | null;
 
-      if (!aiResponse.ok) {
-        throw new Error(aiPayload?.error ?? "AI-kvitteringslesing feilet.");
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "AI-kvitteringsimport feilet.");
       }
 
-      const aiItems = aiPayload?.data?.items ?? [];
-      const aiLines = aiItems
-        .map(receiptLineFromAiItem)
-        .filter((line): line is ReceiptLine => line !== null);
-
-      if (!aiLines.length) {
-        throw new Error("AI fant ingen sikre varelinjer på kvitteringen.");
+      const preview = payload?.data;
+      if (!preview) {
+        throw new Error("AI-kvitteringsimport ga ikke noe resultat.");
       }
 
-      const aiStoreKey = aiPayload?.data?.storeKey ?? null;
-      const aiStoreName = aiPayload?.data?.storeName ?? null;
-
-      if (!aiStoreKey || !aiStoreName) {
-        throw new Error("AI fant varelinjer, men kunne ikke koble kvitteringen til en registrert butikk. Legg til/rydd butikken i systemet og prøv igjen.");
-      }
-
-      const now = new Date();
-      const cache: ReceiptCache = {
-        storeKey: aiStoreKey,
-        storeName: aiStoreName,
-        createdAt: now.toISOString(),
-        expiresAt: new Date(now.getTime() + RECEIPT_TTL_MS).toISOString(),
-        lines: aiLines
-      };
-
-      writeReceiptCache(cache);
-      setReceiptCache(cache);
-      setReceiptStoreKey(aiStoreKey);
-      setReceiptStoreVerified(true);
-      setStoreDetectionMessage(`AI valgte registrert butikk: ${aiStoreName}.`);
+      setReceiptImportPreview(preview);
+      setReceiptImportStoreKey(preview.storeKey ?? preview.detectedStoreKey ?? "");
+      setReceiptStoreKey(preview.storeKey ?? preview.detectedStoreKey ?? "");
+      setReceiptStoreVerified(!preview.needsStoreConfirmation && Boolean(preview.storeKey));
+      setStoreDetectionMessage(
+        preview.needsStoreConfirmation
+          ? preview.reason ?? "Velg registrert butikk før import."
+          : `AI valgte registrert butikk: ${preview.storeName ?? preview.storeKey}.`
+      );
       setReceiptText("");
       setReceiptAiLines(null);
       if (receiptImageUrl) URL.revokeObjectURL(receiptImageUrl);
@@ -858,12 +937,15 @@ export default function MobileScanPage() {
       setReceiptCandidateScore(0);
       setError(null);
 
-      const aiWarnings = Array.isArray(aiPayload?.data?.warnings) ? aiPayload.data.warnings.filter(Boolean) : [];
-      setMessage(
-        aiWarnings.length
-          ? `AI la ${aiLines.length} kvitteringslinjer rett i aktiv kvittering for ${aiStoreName}. ${aiWarnings.join(" ")}`
-          : `AI la ${aiLines.length} kvitteringslinjer rett i aktiv kvittering for ${aiStoreName}. Skann EAN på varene.`
-      );
+      if (preview.needsStoreConfirmation) {
+        setMessage(`AI leste ${preview.linesRead} linjer, men butikken må bekreftes før import.`);
+      } else {
+        const secure = preview.secureMatches?.length ?? 0;
+        const review = preview.reviewMatches?.length ?? 0;
+        const unmatched = preview.unmatchedLines?.length ?? 0;
+        setMessage(`AI leste ${preview.linesRead} linjer. ${secure} sikre basisvarer, ${review} må kontrolleres, ${unmatched} ikke matchet. Importer sikre matcher eller avbryt.`);
+      }
+
       beep(true);
     } catch (error) {
       beep(false);
@@ -871,9 +953,104 @@ export default function MobileScanPage() {
       setOcrStatus(null);
       setError(message);
       setMessage("Kvitteringen ble ikke lagret. Prøv et tydeligere bilde, eller sjekk at butikken er registrert.");
+      setReceiptImportPreview(null);
+      setReceiptImportImageBase64(null);
+      setReceiptImportStoreKey("");
     } finally {
       setReceiptProcessing(false);
     }
+  }
+
+  async function confirmReceiptImport() {
+    if (!receiptImportPreview) {
+      setError("Ingen kvitteringsimport er klar.");
+      return;
+    }
+
+    const confirmedStoreKey = receiptImportPreview.needsStoreConfirmation ? receiptImportStoreKey : receiptImportPreview.storeKey;
+    if (!confirmedStoreKey) {
+      setError("Velg registrert butikk før import.");
+      return;
+    }
+
+    setReceiptProcessing(true);
+    setError(null);
+    setOcrStatus("Importerer sikre matcher...");
+
+    try {
+      const response = await authFetch("/api/mobile/receipt-import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          confirmedStoreKey,
+          importConfirmed: true,
+          fastImport: true,
+          storeKey: confirmedStoreKey,
+          storeName: receiptImportPreview.storeName,
+          receiptDate: receiptImportPreview.receiptDate,
+          observedAt: receiptImportPreview.observedAt,
+          secureMatches: receiptImportPreview.secureMatches ?? [],
+          remainingLines: receiptImportPreview.remainingLines ?? []
+        })
+      });
+
+      const payload = (await response.json().catch(() => null)) as ReceiptImportResponse | null;
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Kunne ikke importere kvittering.");
+      }
+
+      const result = payload?.data;
+      if (!result) {
+        throw new Error("Importen ga ikke noe resultat.");
+      }
+
+      const remainingLines = (result.remainingLines ?? []).map(receiptLineFromImportLine);
+      const now = new Date();
+
+      if (remainingLines.length) {
+        const cache: ReceiptCache = {
+          storeKey: result.storeKey ?? confirmedStoreKey,
+          storeName: result.storeName ?? activeStoreOptions.find((store) => store.storeKey === confirmedStoreKey)?.storeName ?? confirmedStoreKey,
+          createdAt: now.toISOString(),
+          expiresAt: new Date(now.getTime() + RECEIPT_TTL_MS).toISOString(),
+          lines: remainingLines
+        };
+
+        writeReceiptCache(cache);
+        setReceiptCache(cache);
+      } else {
+        writeReceiptCache(null);
+        setReceiptCache(null);
+      }
+
+      setReceiptStoreKey(result.storeKey ?? confirmedStoreKey);
+      setReceiptStoreVerified(true);
+      setReceiptImportPreview(null);
+      setReceiptImportImageBase64(null);
+      setReceiptImportStoreKey("");
+      setOcrStatus(null);
+      setReceiptDetected(false);
+      setReceiptCandidateScore(0);
+      setMessage(`${result.importedCount ?? 0} sikre basispriser importert. ${remainingLines.length} linjer ligger igjen til manuell skanning.`);
+      beep(true);
+    } catch (error) {
+      beep(false);
+      setError(error instanceof Error ? error.message : "Kunne ikke importere kvittering.");
+      setOcrStatus(null);
+    } finally {
+      setReceiptProcessing(false);
+    }
+  }
+
+  function cancelReceiptImport() {
+    setReceiptImportPreview(null);
+    setReceiptImportImageBase64(null);
+    setReceiptImportStoreKey("");
+    setReceiptText("");
+    setReceiptAiLines(null);
+    setOcrStatus(null);
+    setError(null);
+    setMessage("Kvitteringsimport er avbrutt. Ingen priser ble lagret.");
   }
 
   async function captureReceiptFromCamera() {
@@ -1343,6 +1520,84 @@ export default function MobileScanPage() {
           <div className="mt-4 rounded-2xl bg-amber-300/15 p-4 text-sm text-amber-100 ring-1 ring-amber-200/20">
             {cameraError}
           </div>
+        ) : null}
+
+        {receiptImportPreview ? (
+          <section className="mt-4 rounded-3xl bg-emerald-300 p-4 text-slate-950 shadow-2xl">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.18em] opacity-70">Kvittering klar for import</p>
+                <p className="mt-1 text-xl font-black">
+                  {receiptImportPreview.needsStoreConfirmation ? "Velg butikk" : receiptImportPreview.storeName ?? "Butikk valgt"}
+                  {receiptImportPreview.receiptDate ? ` · ${receiptImportPreview.receiptDate}` : ""}
+                </p>
+                <p className="mt-1 text-sm font-semibold opacity-80">
+                  {receiptImportPreview.linesRead} linjer lest · {receiptImportPreview.secureMatches?.length ?? 0} sikre matcher · {receiptImportPreview.reviewMatches?.length ?? 0} må kontrolleres · {receiptImportPreview.unmatchedLines?.length ?? 0} ikke matchet
+                </p>
+                {receiptImportPreview.reason ? <p className="mt-1 text-xs font-bold opacity-75">{receiptImportPreview.reason}</p> : null}
+              </div>
+              <button onClick={cancelReceiptImport} className="rounded-full bg-slate-950 px-4 py-2 text-sm font-black text-white">
+                Avbryt import
+              </button>
+            </div>
+
+            {receiptImportPreview.needsStoreConfirmation ? (
+              <div className="mt-3 rounded-2xl bg-white/60 p-3">
+                <label className="text-xs font-black uppercase tracking-wide opacity-70">Registrert butikk</label>
+                <select
+                  value={receiptImportStoreKey}
+                  onChange={(event) => setReceiptImportStoreKey(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm font-bold text-slate-950"
+                >
+                  <option value="">Velg butikk...</option>
+                  {(receiptImportPreview.stores ?? activeStoreOptions).map((store) => (
+                    <option key={store.storeKey} value={store.storeKey}>{store.storeName}</option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+
+            <div className="mt-3 grid gap-3 md:grid-cols-3">
+              <div className="rounded-2xl bg-white/60 p-3">
+                <p className="text-xs font-black uppercase tracking-wide opacity-70">Importeres automatisk</p>
+                <p className="mt-1 text-3xl font-black">{receiptImportPreview.secureMatches?.length ?? 0}</p>
+              </div>
+              <div className="rounded-2xl bg-white/60 p-3">
+                <p className="text-xs font-black uppercase tracking-wide opacity-70">Trenger kontroll</p>
+                <p className="mt-1 text-3xl font-black">{receiptImportPreview.reviewMatches?.length ?? 0}</p>
+              </div>
+              <div className="rounded-2xl bg-white/60 p-3">
+                <p className="text-xs font-black uppercase tracking-wide opacity-70">Til manuell skanning</p>
+                <p className="mt-1 text-3xl font-black">{receiptImportPreview.remainingLines?.length ?? 0}</p>
+              </div>
+            </div>
+
+            <div className="mt-3 max-h-[45vh] space-y-2 overflow-auto rounded-2xl bg-white/55 p-3 text-sm">
+              {(receiptImportPreview.secureMatches ?? []).slice(0, 8).map((match) => (
+                <div key={match.receiptLineId} className="rounded-xl bg-white/60 p-2">
+                  <div className="flex justify-between gap-3">
+                    <span className="min-w-0 truncate font-bold">{match.line?.name ?? match.line?.text ?? "Ukjent linje"}</span>
+                    <span className="shrink-0 font-black">{formatReceiptPrice(match.line?.unitPrice ?? 0)} kr/stk</span>
+                  </div>
+                  <p className="mt-1 text-xs font-semibold opacity-70">
+                    → {match.product?.name ?? "Basisvare"} · {Math.round(match.confidence * 100)} % sikker
+                  </p>
+                </div>
+              ))}
+              {(receiptImportPreview.secureMatches?.length ?? 0) > 8 ? (
+                <p className="text-xs font-bold opacity-70">Viser 8 av {receiptImportPreview.secureMatches?.length} sikre matcher.</p>
+              ) : null}
+              {!(receiptImportPreview.secureMatches?.length ?? 0) ? <p className="text-sm font-bold opacity-70">Ingen sikre basisvarer funnet. Du kan fortsatt legge linjene til manuell skanning.</p> : null}
+            </div>
+
+            <button
+              onClick={confirmReceiptImport}
+              disabled={receiptProcessing || (receiptImportPreview.needsStoreConfirmation && !receiptImportStoreKey)}
+              className="mt-3 w-full rounded-2xl bg-slate-950 px-4 py-4 text-base font-black text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Importer sikre matcher
+            </button>
+          </section>
         ) : null}
 
         {receiptCache ? (
