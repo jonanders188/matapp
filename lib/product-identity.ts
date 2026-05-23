@@ -1,4 +1,4 @@
-export const PRODUCT_IDENTITY_SELECT = "id, name, brand, ean, category, package_size, image_url, desired_stock, target_price, target_price_unit, preferred_store, is_basis, is_freezable, notes";
+export const PRODUCT_IDENTITY_SELECT = "id, name, brand, ean, category, package_size, image_url, kassalapp_id, notes, created_at";
 
 export type ProductIdentityRow = {
   id: string;
@@ -8,13 +8,9 @@ export type ProductIdentityRow = {
   category: string | null;
   package_size: string | null;
   image_url: string | null;
-  desired_stock: number | null;
-  target_price?: number | null;
-  target_price_unit?: string | null;
-  preferred_store?: string | null;
-  is_basis: boolean | null;
-  is_freezable?: boolean | null;
+  kassalapp_id?: number | null;
   notes?: string | null;
+  created_at?: string | null;
 };
 
 export function normalizeProductEan(value: unknown) {

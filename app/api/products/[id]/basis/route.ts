@@ -19,7 +19,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 
     const productResult = await supabase
       .from("products")
-      .select("id, household_id, desired_stock, target_price, target_price_unit, preferred_store, is_freezable, notes")
+      .select("id, notes")
       .eq("id", id)
       .limit(1);
 
@@ -43,11 +43,11 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       household_id: householdId,
       product_id: id,
       is_basis: isBasis,
-      desired_stock: product.desired_stock ?? 1,
-      target_price: product.target_price ?? null,
-      target_price_unit: product.target_price_unit ?? "unit",
-      preferred_store: product.preferred_store ?? null,
-      is_freezable: product.is_freezable ?? false,
+      desired_stock: 1,
+      target_price: null,
+      target_price_unit: "unit",
+      preferred_store: null,
+      is_freezable: false,
       notes: product.notes ?? null,
       updated_at: new Date().toISOString()
     };

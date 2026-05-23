@@ -72,13 +72,7 @@ type ProductRow = {
   category: string | null;
   package_size: string | null;
   image_url: string | null;
-  target_price: number | null;
-  preferred_store: string | null;
-  desired_stock: number | null;
-  is_basis: boolean | null;
   created_at: string | null;
-  target_price_unit?: string | null;
-  is_freezable?: boolean | null;
   notes?: string | null;
 };
 
@@ -98,18 +92,16 @@ function householdProductPayload(householdId: string, productId: string, product
 }
 
 function mergeHouseholdProduct(product: ProductRow, householdProduct?: HouseholdProductRow | null) {
-  if (!householdProduct) return product;
-
   return {
     ...product,
-    is_basis: householdProduct.is_basis ?? product.is_basis,
-    desired_stock: householdProduct.desired_stock ?? product.desired_stock,
-    target_price: householdProduct.target_price ?? product.target_price,
-    target_price_unit: householdProduct.target_price_unit ?? product.target_price_unit,
-    preferred_store: householdProduct.preferred_store ?? product.preferred_store,
-    is_freezable: householdProduct.is_freezable ?? product.is_freezable,
-    notes: householdProduct.notes ?? product.notes,
-    household_product_updated_at: householdProduct.updated_at
+    is_basis: householdProduct?.is_basis ?? false,
+    desired_stock: householdProduct?.desired_stock ?? 0,
+    target_price: householdProduct?.target_price ?? null,
+    target_price_unit: householdProduct?.target_price_unit ?? "unit",
+    preferred_store: householdProduct?.preferred_store ?? null,
+    is_freezable: householdProduct?.is_freezable ?? false,
+    notes: householdProduct?.notes ?? product.notes ?? null,
+    household_product_updated_at: householdProduct?.updated_at ?? null
   };
 }
 
@@ -212,7 +204,7 @@ export async function GET(request: Request) {
     if (householdProductIds.length) {
       const productsResult = await supabase
         .from("products")
-        .select("id, name, brand, ean, category, package_size, image_url, target_price, target_price_unit, preferred_store, desired_stock, is_basis, is_freezable, notes, created_at")
+        .select("id, name, brand, ean, category, package_size, image_url, notes, created_at")
         .in("id", householdProductIds);
 
       if (productsResult.error) throw productsResult.error;
@@ -227,20 +219,6 @@ export async function GET(request: Request) {
         .filter(Boolean) as ProductRow[];
     }
 
-    // Fallback while the app still has older products that have not been copied
-    // into household_products. This can be removed after the migration is fully stable.
-    // Never use the legacy fallback for /api/products?basis=true: that screen must
-    // only show rows explicitly marked as active basis products for this household.
-    if (!products.length && !basisOnly) {
-      const fallback = await supabase
-        .from("products")
-        .select("id, name, brand, ean, category, package_size, image_url, target_price, target_price_unit, preferred_store, desired_stock, is_basis, is_freezable, notes, created_at")
-        .eq("household_id", householdId)
-        .order("created_at", { ascending: false });
-
-      if (fallback.error) throw fallback.error;
-      products = (fallback.data ?? []) as ProductRow[];
-    }
 
     const productIds = products.map((product) => product.id);
 
@@ -348,12 +326,12 @@ export async function POST(request: Request) {
     const payload = productPayload(product);
     const normalizedEan = normalizeProductEan(product.ean);
 
-    let existingRows: Array<{ id: string; household_id: string | null; created_at: string | null }> = [];
+    let existingRows: Array<{ id: string; created_at: string | null }> = [];
 
     if (normalizedEan) {
       const existing = await supabase
         .from("products")
-        .select("id, household_id, created_at")
+        .select("id, created_at")
         .eq("ean", normalizedEan)
         .order("created_at", { ascending: true })
         .limit(10);
@@ -365,7 +343,7 @@ export async function POST(request: Request) {
     if (!existingRows.length) {
       const existing = await supabase
         .from("products")
-        .select("id, household_id, created_at")
+        .select("id, created_at")
         .eq("kassalapp_id", product.id)
         .order("created_at", { ascending: true })
         .limit(10);
@@ -374,10 +352,7 @@ export async function POST(request: Request) {
       existingRows = existing.data ?? [];
     }
 
-    const existingProduct =
-      existingRows.find((row) => row.household_id === householdId) ??
-      existingRows.find((row) => row.household_id === null) ??
-      existingRows[0];
+    const existingProduct = existingRows[0];
 
     let result = existingProduct
       ? await supabase.from("products").update(payload).eq("id", existingProduct.id).select("*").single()

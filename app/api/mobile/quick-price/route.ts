@@ -156,11 +156,11 @@ async function ensureHouseholdProduct(householdId: string, product: ProductRow) 
     household_id: householdId,
     product_id: product.id,
     is_basis: true,
-    desired_stock: product.desired_stock ?? 1,
-    target_price: product.target_price ?? null,
-    target_price_unit: product.target_price_unit ?? "unit",
-    preferred_store: product.preferred_store ?? null,
-    is_freezable: product.is_freezable ?? false,
+    desired_stock: 1,
+    target_price: null,
+    target_price_unit: "unit",
+    preferred_store: null,
+    is_freezable: false,
     notes: product.notes ?? null,
     updated_at: now
   };

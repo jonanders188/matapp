@@ -10,9 +10,6 @@ type TableName =
   | "products"
   | "inventory_items"
   | "price_observations"
-  | "recommendations"
-  | "shopping_lists"
-  | "shopping_list_items"
   | "product_alternatives";
 
 const TABLES: TableName[] = [
@@ -20,9 +17,6 @@ const TABLES: TableName[] = [
   "products",
   "inventory_items",
   "price_observations",
-  "recommendations",
-  "shopping_lists",
-  "shopping_list_items",
   "product_alternatives"
 ];
 
@@ -68,9 +62,7 @@ export async function GET(request: Request) {
       missingOrBroken,
       nextSteps: [
         "Legg til produkter i basisutvalget",
-        "Synk basispriser",
-        "Generer anbefalinger",
-        "Generer smart handleliste"
+        "Synk basispriser"
       ],
       checkedAt: new Date().toISOString()
     });

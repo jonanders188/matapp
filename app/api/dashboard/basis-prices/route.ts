@@ -206,18 +206,6 @@ function isPriceObservationAllowed(
     : boolPref(preferences.include_other_shelf_edge, true);
 }
 
-async function loadLegacyBasisProducts(supabase: ReturnType<typeof getSupabaseAdmin>, householdId: string) {
-  const { data, error } = await supabase
-    .from("products")
-    .select("id, name, brand, package_size, target_price, desired_stock, preferred_store, image_url")
-    .eq("household_id", householdId)
-    .eq("is_basis", true)
-    .order("name", { ascending: true });
-
-  if (error) throw error;
-  return (data ?? []) as ProductRow[];
-}
-
 async function loadBasisProducts(supabase: ReturnType<typeof getSupabaseAdmin>, householdId: string) {
   const { data: householdProductsData, error: householdProductsError } = await supabase
     .from("household_products")
@@ -225,23 +213,18 @@ async function loadBasisProducts(supabase: ReturnType<typeof getSupabaseAdmin>, 
     .eq("household_id", householdId)
     .eq("is_basis", true);
 
-  if (householdProductsError) {
-    console.warn("[api/dashboard/basis-prices] household_products lookup failed, falling back to products.is_basis", householdProductsError.message);
-    return loadLegacyBasisProducts(supabase, householdId);
-  }
+  if (householdProductsError) throw householdProductsError;
 
   const householdProducts = ((householdProductsData ?? []) as HouseholdProductRow[]).filter((item) => item.product_id);
 
-  if (!householdProducts.length) {
-    return loadLegacyBasisProducts(supabase, householdId);
-  }
+  if (!householdProducts.length) return [];
 
   const householdProductByProductId = new Map(householdProducts.map((item) => [item.product_id, item]));
   const productIds = householdProducts.map((item) => item.product_id);
 
   const { data: productsData, error: productsError } = await supabase
     .from("products")
-    .select("id, name, brand, package_size, target_price, desired_stock, preferred_store, image_url")
+    .select("id, name, brand, package_size, image_url")
     .in("id", productIds)
     .order("name", { ascending: true });
 
@@ -252,13 +235,13 @@ async function loadBasisProducts(supabase: ReturnType<typeof getSupabaseAdmin>, 
 
     return {
       ...product,
-      target_price: householdProduct?.target_price ?? product.target_price,
-      desired_stock: householdProduct?.desired_stock ?? product.desired_stock,
-      preferred_store: householdProduct?.preferred_store ?? product.preferred_store
+      target_price: householdProduct?.target_price ?? null,
+      desired_stock: householdProduct?.desired_stock ?? null,
+      preferred_store: householdProduct?.preferred_store ?? null
     };
   });
 
-  return products.length ? products : loadLegacyBasisProducts(supabase, householdId);
+  return products;
 }
 
 export async function GET(request: Request) {

@@ -97,17 +97,15 @@ function householdProductPayload(
 }
 
 function mergeHouseholdProduct(product: MobileProductRow, householdProduct: HouseholdProductSettings | null | undefined) {
-  if (!householdProduct) return product;
-
   return {
     ...product,
-    is_basis: true,
-    desired_stock: householdProduct.desired_stock ?? product.desired_stock,
-    target_price: householdProduct.target_price ?? product.target_price,
-    target_price_unit: householdProduct.target_price_unit ?? product.target_price_unit,
-    preferred_store: householdProduct.preferred_store ?? product.preferred_store,
-    is_freezable: householdProduct.is_freezable ?? product.is_freezable,
-    notes: householdProduct.notes ?? product.notes
+    is_basis: Boolean(householdProduct),
+    desired_stock: householdProduct?.desired_stock ?? 1,
+    target_price: householdProduct?.target_price ?? null,
+    target_price_unit: householdProduct?.target_price_unit ?? "unit",
+    preferred_store: householdProduct?.preferred_store ?? null,
+    is_freezable: householdProduct?.is_freezable ?? false,
+    notes: householdProduct?.notes ?? product.notes ?? null
   };
 }
 
@@ -485,7 +483,7 @@ async function findOrCreateProduct(ean: string, householdId: string, options?: {
   const existingProduct = await findCanonicalProductByEan<MobileProductRow>(supabase, ean, PRODUCT_IDENTITY_SELECT);
 
   if (existingProduct) {
-    const householdProduct = await ensureHouseholdProduct(householdId, existingProduct.id, existingProduct);
+    const householdProduct = await ensureHouseholdProduct(householdId, existingProduct.id);
     const priceResult = options?.skipKassalappPriceInsert ? { inserted: 0, found: false } : await refreshProductPrices(existingProduct.id, ean);
 
     return {
@@ -509,7 +507,7 @@ async function findOrCreateProduct(ean: string, householdId: string, options?: {
 
   const saved = await insertProductWithoutDuplicate<MobileProductRow>(supabase, payload, PRODUCT_IDENTITY_SELECT);
 
-  const householdProduct = await ensureHouseholdProduct(householdId, saved.data.id, saved.data);
+  const householdProduct = await ensureHouseholdProduct(householdId, saved.data.id);
   const priceResult = options?.skipKassalappPriceInsert
     ? { inserted: 0 }
     : await insertPriceObservations(saved.data.id, selected, related, "kassalapp-mobile-scan");

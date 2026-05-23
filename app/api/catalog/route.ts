@@ -4,17 +4,12 @@ import { getSupabaseAdmin } from "@/lib/supabase-server";
 
 type ProductRow = {
   id: string;
-  household_id: string | null;
   name: string;
   brand: string | null;
   ean: string | null;
   category: string | null;
   package_size: string | null;
   image_url: string | null;
-  target_price: number | null;
-  preferred_store: string | null;
-  desired_stock: number | null;
-  is_basis: boolean | null;
   created_at: string | null;
 };
 
@@ -40,7 +35,7 @@ export async function GET(request: Request) {
 
     let productsQuery = supabase
       .from("products")
-      .select("id, household_id, name, brand, ean, category, package_size, image_url, target_price, preferred_store, desired_stock, is_basis, created_at")
+      .select("id, name, brand, ean, category, package_size, image_url, created_at")
       .order("name", { ascending: true })
       .limit(query ? 120 : 80);
 
@@ -77,7 +72,7 @@ export async function GET(request: Request) {
       if (missingBasisIds.length) {
         const missingBasisProductsResult = await supabase
           .from("products")
-          .select("id, household_id, name, brand, ean, category, package_size, image_url, target_price, preferred_store, desired_stock, is_basis, created_at")
+          .select("id, name, brand, ean, category, package_size, image_url, created_at")
           .in("id", missingBasisIds);
 
         if (missingBasisProductsResult.error) throw missingBasisProductsResult.error;
@@ -142,9 +137,9 @@ export async function GET(request: Request) {
           ...product,
           is_in_household: Boolean(householdProduct),
           is_basis: householdProduct?.is_basis ?? false,
-          desired_stock: householdProduct?.desired_stock ?? product.desired_stock,
-          target_price: householdProduct?.target_price ?? product.target_price,
-          preferred_store: householdProduct?.preferred_store ?? product.preferred_store,
+          desired_stock: householdProduct?.desired_stock ?? null,
+          target_price: householdProduct?.target_price ?? null,
+          preferred_store: householdProduct?.preferred_store ?? null,
           household_product_updated_at: householdProduct?.updated_at ?? null,
           ...(statsByProductId.get(product.id) ?? {
             price_observation_count: 0,

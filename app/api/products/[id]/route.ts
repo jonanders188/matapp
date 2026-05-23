@@ -14,14 +14,7 @@ type ApiErrorLike = {
 
 type ProductRow = Record<string, any> & {
   id: string;
-  household_id: string | null;
   name: string;
-  target_price?: number | null;
-  target_price_unit?: string | null;
-  desired_stock?: number | null;
-  is_basis?: boolean | null;
-  is_freezable?: boolean | null;
-  preferred_store?: string | null;
   notes?: string | null;
 };
 
@@ -61,19 +54,17 @@ function toBoolean(value: unknown) {
 }
 
 function mergeHouseholdProduct(product: ProductRow, householdProduct?: HouseholdProductRow | null) {
-  if (!householdProduct) return product;
-
   return {
     ...product,
-    is_basis: householdProduct.is_basis ?? product.is_basis,
-    desired_stock: householdProduct.desired_stock ?? product.desired_stock,
-    target_price: householdProduct.target_price ?? product.target_price,
-    target_price_unit: householdProduct.target_price_unit ?? product.target_price_unit,
-    preferred_store: householdProduct.preferred_store ?? product.preferred_store,
-    is_freezable: householdProduct.is_freezable ?? product.is_freezable,
-    notes: householdProduct.notes ?? product.notes,
-    household_product_id: householdProduct.id,
-    household_product_updated_at: householdProduct.updated_at
+    is_basis: householdProduct?.is_basis ?? false,
+    desired_stock: householdProduct?.desired_stock ?? 0,
+    target_price: householdProduct?.target_price ?? null,
+    target_price_unit: householdProduct?.target_price_unit ?? "unit",
+    preferred_store: householdProduct?.preferred_store ?? null,
+    is_freezable: householdProduct?.is_freezable ?? false,
+    notes: householdProduct?.notes ?? product.notes ?? null,
+    household_product_id: householdProduct?.id ?? null,
+    household_product_updated_at: householdProduct?.updated_at ?? null
   };
 }
 

@@ -90,7 +90,6 @@ export default function MealsPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <a href="/inventory" className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700">Lager</a>
-          <a href="/shopping-list" className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700">Handleliste</a>
           <button onClick={loadMeals} disabled={loading} className="rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
             {loading ? "Henter..." : "Oppdater forslag"}
           </button>

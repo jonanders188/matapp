@@ -39,15 +39,27 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       householdId = household.id;
     }
 
+    const householdProductResult = await supabase
+      .from("household_products")
+      .select("id")
+      .eq("household_id", householdId)
+      .eq("product_id", id)
+      .eq("is_basis", true)
+      .maybeSingle();
+
+    if (householdProductResult.error) throw householdProductResult.error;
+    if (!householdProductResult.data) {
+      return NextResponse.json({ error: "Produktet er ikke i basisutvalget for denne husholdningen" }, { status: 404 });
+    }
+
     const productResult = await supabase
       .from("products")
-      .select("id, household_id, name, ean, kassalapp_id")
-      .eq("household_id", householdId)
+      .select("id, name, ean, kassalapp_id")
       .eq("id", id)
-      .limit(1);
+      .maybeSingle();
 
     if (productResult.error) throw productResult.error;
-    const product = productResult.data?.[0];
+    const product = productResult.data;
     if (!product) return NextResponse.json({ error: "Fant ikke produkt" }, { status: 404 });
 
     const exactLookup = product.ean ? await lookupKassalappProductsWithPricesByEan(product.ean) : null;

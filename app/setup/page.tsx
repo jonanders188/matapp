@@ -19,21 +19,6 @@ const steps = [
     method: "POST",
     url: "/api/products/sync-prices"
   },
-  {
-    key: "recommendations",
-    title: "Generer anbefalinger",
-    description: "Lager kjøp/vent/hamstre/anbefalinger basert på pris og lager.",
-    method: "POST",
-    url: "/api/recommendations/generate"
-  },
-  {
-    key: "shopping-list",
-    title: "Generer handleliste",
-    description: "Lager en praktisk handleliste fra anbefalingene, med maks to butikker.",
-    method: "POST",
-    url: "/api/shopping-list/generate",
-    body: { maxStores: 2 }
-  }
 ] as const;
 
 type StepKey = (typeof steps)[number]["key"];
@@ -145,8 +130,6 @@ export default function SetupPage() {
         </div>
         <div className="flex flex-col gap-3 sm:flex-row">
           <a href="/products" className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700">Produkter</a>
-          <a href="/recommendations" className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700">Anbefalinger</a>
-          <a href="/shopping-list" className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700">Handleliste</a>
           <input
             value={adminSecret}
             onChange={(event) => updateAdminSecret(event.target.value)}
@@ -228,7 +211,7 @@ export default function SetupPage() {
               <li>Sett miljøvariabler i Vercel, inkludert ADMIN_API_SECRET eller CRON_SECRET.</li>
               <li>Kjør full oppstart lokalt.</li>
               <li>Kjør <code>npm run build</code> før deploy.</li>
-              <li>Test /setup, /products, /recommendations og /shopping-list i Vercel.</li>
+              <li>Test /setup, /products, /prices, /inventory og /mobile i Vercel.</li>
             </ol>
           </section>
 
@@ -238,7 +221,6 @@ export default function SetupPage() {
               <a className="rounded-xl bg-slate-50 px-3 py-2 text-brand" href="/api/health">/api/health</a>
               <a className="rounded-xl bg-slate-50 px-3 py-2 text-brand" href="/api/bootstrap/status">/api/bootstrap/status</a>
               <a className="rounded-xl bg-slate-50 px-3 py-2 text-brand" href="/inventory">Lager</a>
-              <a className="rounded-xl bg-slate-50 px-3 py-2 text-brand" href="/shopping-list">Smart handleliste</a>
             </div>
           </section>
         </aside>

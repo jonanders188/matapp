@@ -3,7 +3,6 @@ import {
   Box,
   Database,
   PackageSearch,
-  ReceiptText,
   Settings,
   Smartphone,
   Tags
@@ -34,7 +33,6 @@ const navSections: { title: string; items: NavItem[] }[] = [
       { label: "Lager", href: "/inventory", icon: Box, description: "Hva dere har" },
       { label: "Skann i butikk", href: "/mobile", icon: Smartphone, aliases: ["Mobile", "Mobil butikk"], description: "Pris og hyllekant" },
       { label: "Skann hjemme", href: "/mobile2", icon: Smartphone, aliases: ["Mobile2", "Mobil lager"], description: "Inn og ut av lager" },
-      { label: "Kjøp", href: "/purchases", icon: ReceiptText, description: "Historikk" }
     ]
   },
   {

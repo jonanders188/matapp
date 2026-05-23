@@ -76,17 +76,15 @@ type HouseholdProductSettings = {
 };
 
 function mergeHouseholdProduct(product: ShelfProductRow, householdProduct: HouseholdProductSettings | null | undefined) {
-  if (!householdProduct) return product;
-
   return {
     ...product,
-    is_basis: true,
-    desired_stock: householdProduct.desired_stock ?? product.desired_stock,
-    target_price: householdProduct.target_price ?? product.target_price,
-    target_price_unit: householdProduct.target_price_unit ?? product.target_price_unit,
-    preferred_store: householdProduct.preferred_store ?? product.preferred_store,
-    is_freezable: householdProduct.is_freezable ?? product.is_freezable,
-    notes: householdProduct.notes ?? product.notes
+    is_basis: Boolean(householdProduct),
+    desired_stock: householdProduct?.desired_stock ?? 1,
+    target_price: householdProduct?.target_price ?? null,
+    target_price_unit: householdProduct?.target_price_unit ?? "unit",
+    preferred_store: householdProduct?.preferred_store ?? null,
+    is_freezable: householdProduct?.is_freezable ?? false,
+    notes: householdProduct?.notes ?? product.notes ?? null
   };
 }
 
@@ -151,7 +149,7 @@ async function findOrCreateProduct(householdId: string, ean: string) {
   const existingProduct = await findCanonicalProductByEan<ShelfProductRow>(supabase, ean, PRODUCT_IDENTITY_SELECT);
 
   if (existingProduct) {
-    const householdProduct = await ensureHouseholdProduct(householdId, existingProduct.id, existingProduct);
+    const householdProduct = await ensureHouseholdProduct(householdId, existingProduct.id);
     return { product: mergeHouseholdProduct(existingProduct, householdProduct), created: false };
   }
 
@@ -168,7 +166,7 @@ async function findOrCreateProduct(householdId: string, ean: string) {
     PRODUCT_IDENTITY_SELECT
   );
 
-  const householdProduct = await ensureHouseholdProduct(householdId, saved.data.id, saved.data);
+  const householdProduct = await ensureHouseholdProduct(householdId, saved.data.id);
   return { product: mergeHouseholdProduct(saved.data, householdProduct), created: !saved.reusedExisting };
 }
 

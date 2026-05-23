@@ -79,19 +79,6 @@ export async function POST(request: Request) {
       products = (productsResult.data ?? []) as ProductRow[];
     }
 
-    // Temporary fallback while old installations are migrating: still only sync basis products.
-    if (!products.length) {
-      const fallbackProductsResult = await supabase
-        .from("products")
-        .select("id, name, ean, kassalapp_id")
-        .eq("household_id", householdId)
-        .eq("is_basis", true)
-        .order("created_at", { ascending: false })
-        .limit(1000);
-
-      if (fallbackProductsResult.error) throw fallbackProductsResult.error;
-      products = (fallbackProductsResult.data ?? []) as ProductRow[];
-    }
     let searched = 0;
     let matchedProducts = 0;
     let inserted = 0;
