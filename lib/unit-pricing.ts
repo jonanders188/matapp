@@ -206,14 +206,47 @@ export function computeComparableUnitPrice(product: UnitPricingProduct, packageP
     ? product.comparison_unit.trim().toLowerCase()
     : inferred?.comparison_unit ?? null;
 
+  const computedUnitPrice = price && price > 0 && inferred && inferred.comparison_quantity > 0
+    ? roundPrice(price / inferred.comparison_quantity)
+    : null;
+
+  // A source-provided unit price is useful, but it must not override a safer
+  // product.package_size calculation when it is obviously inconsistent. This
+  // prevents bad imports such as 12x500g/9x510g/1,5lx6 where Kassalapp or older
+  // rows supplied a unit price based on the wrong package quantity.
   if (fallback && fallback > 0) {
+    if (computedUnitPrice !== null && inferred) {
+      const roundedFallback = roundPrice(fallback);
+      const diffRatio = Math.abs(roundedFallback - computedUnitPrice) / Math.max(computedUnitPrice, 0.01);
+
+      if (diffRatio > 0.30) {
+        return {
+          unit_price: computedUnitPrice,
+          comparison_unit: preferredComparisonUnit ?? inferred.comparison_unit,
+          package_quantity: inferred.package_quantity,
+          package_unit: inferred.package_unit,
+          unit_price_source: inferred.source === "product-fields" ? "manual" : "computed",
+          reason: `Ignorerte avvikende enhetspris fra priskilde (${roundedFallback}) og beregnet fra pakkepris og ${inferred.package_quantity} ${inferred.package_unit}.`
+        };
+      }
+
+      return {
+        unit_price: roundedFallback,
+        comparison_unit: preferredComparisonUnit ?? inferred.comparison_unit,
+        package_quantity: inferred.package_quantity,
+        package_unit: inferred.package_unit,
+        unit_price_source: "kassalapp",
+        reason: "Brukte enhetspris fra priskilde etter kontroll mot pakningsstørrelse."
+      };
+    }
+
     return {
       unit_price: roundPrice(fallback),
       comparison_unit: preferredComparisonUnit ?? inferred?.comparison_unit ?? null,
       package_quantity: inferred?.package_quantity ?? null,
       package_unit: inferred?.package_unit ?? null,
       unit_price_source: "kassalapp",
-      reason: "Brukte enhetspris fra priskilde."
+      reason: "Brukte enhetspris fra priskilde fordi trygg pakningsstørrelse ikke var tilgjengelig."
     };
   }
 
@@ -228,7 +261,7 @@ export function computeComparableUnitPrice(product: UnitPricingProduct, packageP
     };
   }
 
-  if (!inferred || inferred.comparison_quantity <= 0) {
+  if (!inferred || inferred.comparison_quantity <= 0 || computedUnitPrice === null) {
     return {
       unit_price: null,
       comparison_unit: preferredComparisonUnit,
@@ -240,7 +273,7 @@ export function computeComparableUnitPrice(product: UnitPricingProduct, packageP
   }
 
   return {
-    unit_price: roundPrice(price / inferred.comparison_quantity),
+    unit_price: computedUnitPrice,
     comparison_unit: preferredComparisonUnit ?? inferred.comparison_unit,
     package_quantity: inferred.package_quantity,
     package_unit: inferred.package_unit,

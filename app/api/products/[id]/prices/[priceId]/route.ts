@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { apiErrorResponse, requireCurrentHousehold } from "@/lib/current-household";
 import { canonicalStoreName, normalizeStoreCode } from "@/lib/price-observations";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
+import { unitPricingColumnsForProduct } from "@/lib/unit-pricing";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -29,7 +30,6 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 
     const body = await request.json().catch(() => ({}));
     const price = toNullableNumber(body.price);
-    const unitPrice = toNullableNumber(body.unit_price);
     const storeName = String(body.store_name ?? "").trim();
 
     if (!price || price <= 0) {
@@ -44,7 +44,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 
     const existing = await supabase
       .from("price_observations")
-      .select("id, product_id")
+      .select("id, product_id, comparison_unit")
       .eq("id", priceId)
       .eq("product_id", id)
       .limit(1);
@@ -54,13 +54,46 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       return NextResponse.json({ error: "Fant ikke prisobservasjon" }, { status: 404 });
     }
 
+    const productResult = await supabase
+      .from("products")
+      .select("id, name, brand, category, package_size, net_content_value, net_content_unit, comparison_unit")
+      .eq("id", id)
+      .limit(1);
+
+    if (productResult.error) throw productResult.error;
+    const product = productResult.data?.[0];
+    if (!product) {
+      return NextResponse.json({ error: "Fant ikke produkt" }, { status: 404 });
+    }
+
+    const unitPricing = unitPricingColumnsForProduct(
+      {
+        name: product.name,
+        brand: product.brand ?? null,
+        category: product.category ?? null,
+        package_size: product.package_size ?? null,
+        net_content_value: product.net_content_value ?? null,
+        net_content_unit: product.net_content_unit ?? null,
+        comparison_unit: existing.data[0].comparison_unit ?? product.comparison_unit ?? null
+      },
+      price
+    );
+
     const storeCode = normalizeStoreCode(storeName);
     const payload = {
       price,
-      unit_price: unitPrice,
+      unit_price: unitPricing.unit_price,
+      comparison_unit: unitPricing.comparison_unit,
+      package_quantity: unitPricing.package_quantity,
+      package_unit: unitPricing.package_unit,
+      unit_price_source: unitPricing.unit_price_source,
       store_name: canonicalStoreName(storeCode, storeName),
       store_code: storeCode,
-      source: "manual-price-edit"
+      source: "manual-price-edit",
+      raw: {
+        manual_price_edit: true,
+        unit_pricing: unitPricing.raw_unit_pricing
+      }
     };
 
     const updated = await supabase
@@ -68,7 +101,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       .update(payload)
       .eq("id", priceId)
       .eq("product_id", id)
-      .select("id, store_code, store_name, price, unit_price, observed_at, source, source_url")
+      .select("id, store_code, store_name, price, unit_price, comparison_unit, package_quantity, package_unit, observed_at, source, source_url")
       .single();
 
     if (updated.error) throw updated.error;

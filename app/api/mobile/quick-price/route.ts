@@ -123,10 +123,10 @@ type QuickProductGroup = {
   priceOptions: QuickGroupPrice[];
 };
 
-const FRESH_PRICE_DAYS = 14;
+const FRESH_PRICE_DAYS = 45;
 const FRESH_PRICE_MS = FRESH_PRICE_DAYS * 24 * 60 * 60 * 1000;
 const GROUP_FRESH_PRICE_DAYS = 30;
-const GROUP_STALE_PRICE_DAYS = 90;
+const GROUP_USABLE_PRICE_DAYS = 45;
 
 function cleanEan(value: unknown) {
   return String(value ?? "").replace(/\D/g, "").trim();
@@ -180,15 +180,20 @@ function isFreshGroupPrice(value: string | null) {
 
 function isStaleGroupPrice(value: string | null) {
   const ageDays = priceAgeDays(value);
-  return ageDays === null || ageDays > GROUP_STALE_PRICE_DAYS;
+  return ageDays === null || ageDays > GROUP_FRESH_PRICE_DAYS;
+}
+
+function isUsableGroupPrice(value: string | null) {
+  const ageDays = priceAgeDays(value);
+  return ageDays !== null && ageDays <= GROUP_USABLE_PRICE_DAYS;
 }
 
 function groupPriceFreshnessRank(value: string | null) {
   const ageDays = priceAgeDays(value);
-  if (ageDays === null) return 3;
+  if (ageDays === null) return 9;
   if (ageDays <= GROUP_FRESH_PRICE_DAYS) return 0;
-  if (ageDays <= GROUP_STALE_PRICE_DAYS) return 1;
-  return 2;
+  if (ageDays <= GROUP_USABLE_PRICE_DAYS) return 1;
+  return 9;
 }
 
 async function loadActiveStores(householdId: string) {
@@ -487,7 +492,7 @@ async function loadProductGroupSummary(productId: string, stores: Awaited<Return
         isStale: isStaleGroupPrice(observation.observed_at)
       } satisfies QuickGroupPrice;
     })
-    .filter((price) => price.price !== null && price.unitPrice !== null)
+    .filter((price) => price.price !== null && price.unitPrice !== null && isUsableGroupPrice(price.observedAt))
     .sort((a, b) => {
       const aFreshness = groupPriceFreshnessRank(a.observedAt);
       const bFreshness = groupPriceFreshnessRank(b.observedAt);

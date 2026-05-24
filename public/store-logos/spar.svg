@@ -1,1 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 120" role="img" aria-label="SPAR"><polygon points="60,58 86,30 112,58 86,86" fill="#0F9D58"/><circle cx="86" cy="58" r="8" fill="#FFD400"/><text x="216" y="84" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="62" font-weight="900" letter-spacing="1" fill="#0F9D58">SPAR</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 160" role="img" aria-label="SPAR logo">
+  <rect width="520" height="160" fill="#ffffff"/>
+  <g transform="translate(24 20)">
+    <circle cx="60" cy="60" r="54" fill="#007A3D"/>
+    <path d="M60 21 L91 72 H74 L101 111 H19 L46 72 H29 Z" fill="#ffffff"/>
+    <rect x="54" y="100" width="12" height="20" rx="2" fill="#ffffff"/>
+  </g>
+  <text x="326" y="108" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="92" font-weight="900" letter-spacing="2" fill="#E31B23">SPAR</text>
+</svg>

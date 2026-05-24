@@ -133,15 +133,14 @@ function parsePrice(value: string) {
 
 function groupPriceFreshnessLabel(price: QuickGroupPrice | null | undefined) {
   if (!price) return null;
-  if (price.isFresh) return "Fersk pris";
-  if (price.isStale) return "Gammel pris";
-  return "Eldre pris";
+  if (price.isFresh) return "Aktuell pris";
+  if (price.isStale) return "Bør sjekkes";
+  return "Bør sjekkes";
 }
 
 function groupPriceFreshnessClass(price: QuickGroupPrice | null | undefined) {
   if (!price) return "bg-slate-100 text-slate-600";
   if (price.isFresh) return "bg-emerald-50 text-emerald-700";
-  if (price.isStale) return "bg-rose-50 text-rose-700";
   return "bg-amber-50 text-amber-800";
 }
 
@@ -799,7 +798,7 @@ export default function MobileScanPage() {
               </div>
             </section>
 
-            <section className="order-10 rounded-[2rem] bg-white p-5 text-slate-950 shadow-xl">
+            <section className={`rounded-[2rem] bg-white p-5 text-slate-950 shadow-xl ${mobileMode === "best_prices" ? "order-15" : "order-10"}`}>
               <div className="flex gap-4">
                 {lookup.product?.imageUrl ? (
                   <img src={lookup.product.imageUrl} alt="" className="h-24 w-24 rounded-3xl object-contain" />
@@ -820,33 +819,7 @@ export default function MobileScanPage() {
               {lookup.kassalappMessage ? <p className="mt-4 rounded-2xl bg-amber-50 p-3 text-sm font-semibold text-amber-800">{lookup.kassalappMessage}</p> : null}
             </section>
 
-            {mobileMode === "best_prices" ? (
-              <section className="order-90 rounded-[2rem] bg-white p-4 text-slate-950 shadow-xl ring-1 ring-slate-200">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Legg inn pris</p>
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <StoreLogoBadge storeKey={selectedStore?.storeKey} storeName={selectedStore?.storeName} compact />
-                      <p className="text-sm font-bold text-slate-600">
-                        {selectedStorePrice?.price
-                          ? `Sist kjent: ${kr(selectedStorePrice.price)} · ${formatDate(selectedStorePrice.observedAt)}`
-                          : "Ingen kjent pris i aktiv butikk"}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setMobileMode("update_price")}
-                    className="shrink-0 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white"
-                  >
-                    Oppdater
-                  </button>
-                </div>
-                <p className="mt-3 text-sm font-semibold text-slate-500">
-                  Prisfeltet er skjult i Vis beste priser og åpnes først i Legg inn pris.
-                </p>
-              </section>
-            ) : (
+            {mobileMode !== "best_prices" ? (
               <section className="order-20 rounded-[2rem] bg-white p-5 text-slate-950 shadow-xl ring-2 ring-emerald-200">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -923,12 +896,10 @@ export default function MobileScanPage() {
                 </button>
                 {productIsUnsaved && saveMode === "none" ? <p className="mt-3 text-sm font-semibold text-slate-500">Ikke lagre brukes bare for å se priser. Prisen kan ikke lagres uten produkt.</p> : null}
               </section>
-            )}
+            ) : null}
 
-            <section className={`rounded-[2rem] bg-white p-5 text-slate-950 shadow-xl ${mobileMode === "best_prices" ? "order-30" : "order-50"}`}>
-              <h2 className="text-lg font-black">Gyldige priser</h2>
-              <p className="mt-1 text-sm font-semibold text-slate-500">Alle kjente butikkpriser for skannet vare. Blanke priser skjules.</p>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <section className={`rounded-[2rem] bg-white p-5 text-slate-950 shadow-xl ${mobileMode === "best_prices" ? "order-20" : "order-50"}`}>
+              <div className="grid gap-2 sm:grid-cols-2">
                 {visibleStorePrices.map((price) => (
                   <div key={price.storeKey} className={`rounded-[1.25rem] p-3 ${price.storeKey === selectedStoreKey ? "bg-emerald-50 ring-2 ring-emerald-300" : "bg-slate-50"}`}>
                     <div className="flex items-start justify-between gap-3">
@@ -955,7 +926,7 @@ export default function MobileScanPage() {
                   <div className="min-w-0">
                     <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Anbefaling</p>
                     <h2 className="mt-1 text-2xl font-black">
-                      {hasCheaperPackage ? "Kjøp heller billigere pakning" : "Beste registrerte pris"}
+                      {hasCheaperPackage ? "Kjøp heller billigere pakning" : "Beste kjøp nå"}
                     </h2>
                     <p className="mt-1 text-sm font-semibold text-slate-500">
                       {lookup.productGroup.name} · {lookup.productGroup.packageCount} forpakninger / EAN-varer
@@ -997,7 +968,7 @@ export default function MobileScanPage() {
                   </div>
                 ) : (
                   <p className="mt-4 rounded-2xl bg-slate-50 p-3 text-sm font-bold text-slate-600">
-                    Ingen sammenlignbare prisobservasjoner funnet for forpakningene ennå.
+                    Ingen trygg nåpris funnet. Skann hylleprisen for å oppdatere.
                   </p>
                 )}
 
@@ -1020,7 +991,6 @@ export default function MobileScanPage() {
 
                 <div className="mt-4 rounded-3xl border border-slate-200 bg-white p-4">
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Gyldige priser</p>
-                  <p className="mt-1 text-xs font-bold text-slate-500">Kun priser med gyldig pakkepris og enhetspris vises.</p>
                   {validGroupPrices.length ? (
                     <div className="mt-3 overflow-hidden rounded-2xl border border-slate-100">
                       {validGroupPrices.map((option, index) => {
@@ -1074,7 +1044,7 @@ export default function MobileScanPage() {
                       })}
                     </div>
                     <p className="mt-3 rounded-2xl bg-blue-50 p-3 text-sm font-semibold text-blue-900">
-                      Hvis du skal kjøpe mye, sammenlign alltid literpris, kilopris eller stykkpris på større pakninger.
+                      Viser bare nyeste aktuelle pris per butikk. Grønt er 0–30 dager, gult er 31–45 dager.
                     </p>
                   </div>
                 ) : null}

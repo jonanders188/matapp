@@ -48,9 +48,42 @@ type Observation = {
   comparison_unit: string | null;
   package_quantity?: number | null;
   package_unit?: string | null;
+  unit_price_was_corrected?: boolean | null;
+  stored_unit_price?: number | null;
+  recomputed_unit_price?: number | null;
   observed_at: string;
   source: string | null;
   source_url: string | null;
+};
+
+type ProductGroupPriceOption = {
+  product_id: string;
+  product_name: string;
+  ean: string | null;
+  package_size: string | null;
+  store_name: string;
+  store_code: string | null;
+  price: number | null;
+  unit_price: number | null;
+  comparison_unit: string | null;
+  observed_at: string | null;
+  source: string | null;
+  source_url: string | null;
+  age_days?: number | null;
+  freshness?: "fresh" | "check";
+  is_scanned_product: boolean;
+};
+
+type ProductGroupSummary = {
+  id: string;
+  name: string;
+  brand: string | null;
+  category: string | null;
+  comparison_unit: string | null;
+  package_count: number;
+  cheapest: ProductGroupPriceOption | null;
+  scanned_product_best_price: ProductGroupPriceOption | null;
+  price_options: ProductGroupPriceOption[];
 };
 
 type DetailPayload = {
@@ -58,6 +91,7 @@ type DetailPayload = {
   inventory: InventoryItem[];
   price_observations: Observation[];
   latest_by_store: Array<{ store_name: string; price: number; unit_price: number | null; comparison_unit: string | null; observed_at: string; source: string | null; source_url: string | null }>;
+  product_group?: ProductGroupSummary | null;
 };
 
 function shortDate(value?: string | null) {
@@ -77,6 +111,25 @@ function shortDateTime(value?: string | null) {
   }).format(parsed);
 }
 
+function currentPriceLabel(option?: ProductGroupPriceOption | null) {
+  if (!option) return null;
+  if (option.freshness === "fresh") return "Aktuell pris";
+  return "Bør sjekkes";
+}
+
+function currentPriceClass(option?: ProductGroupPriceOption | null) {
+  if (!option) return "bg-slate-50 text-slate-600";
+  if (option.freshness === "fresh") return "bg-emerald-50 text-brand";
+  return "bg-amber-50 text-amber-800";
+}
+
+function ageText(ageDays?: number | null) {
+  if (ageDays == null) return "ukjent alder";
+  if (ageDays === 0) return "i dag";
+  if (ageDays === 1) return "i går";
+  return `${ageDays} dager`;
+}
+
 function priceSourceLabel(source?: string | null) {
   const normalized = String(source ?? "").trim().toLowerCase();
 
@@ -90,6 +143,120 @@ function priceSourceLabel(source?: string | null) {
   return source ?? "Ukjent kilde";
 }
 
+
+
+function formatNumberNb(value: number, maximumFractionDigits = 2) {
+  return new Intl.NumberFormat("nb-NO", {
+    maximumFractionDigits,
+    minimumFractionDigits: 0
+  }).format(value);
+}
+
+function toNumeric(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = typeof value === "number" ? value : Number(String(value).replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeProductUnit(value: string | null | undefined) {
+  const unit = String(value ?? "").trim().toLowerCase();
+  if (["kg", "kilo", "kilogram"].includes(unit)) return "kg";
+  if (["g", "gram"].includes(unit)) return "g";
+  if (["l", "liter", "litre", "ltr"].includes(unit)) return "l";
+  if (["ml", "milliliter"].includes(unit)) return "ml";
+  if (["stk", "pk", "pakke", "pakker"].includes(unit)) return "stk";
+  return unit || null;
+}
+
+function toComparisonQuantity(amount: number, unit: string | null | undefined) {
+  const normalized = normalizeProductUnit(unit);
+  if (normalized === "kg") return { quantity: amount, unit: "kg" };
+  if (normalized === "g") return { quantity: amount / 1000, unit: "kg" };
+  if (normalized === "l") return { quantity: amount, unit: "l" };
+  if (normalized === "ml") return { quantity: amount / 1000, unit: "l" };
+  if (normalized === "stk") return { quantity: amount, unit: "stk" };
+  return null;
+}
+
+function formatQuantity(value: number | null | undefined, unit: string | null | undefined) {
+  const amount = toNumeric(value);
+  const normalized = normalizeProductUnit(unit);
+  if (amount === null || !normalized) return null;
+  return `${formatNumberNb(amount)} ${normalized}`;
+}
+
+function parseMultipackFromName(name: string | null | undefined) {
+  const text = String(name ?? "").toLowerCase().replace(/,/g, ".");
+  const patterns: Array<{ regex: RegExp; countIndex: number; amountIndex: number; unitIndex: number }> = [
+    { regex: /(\d+(?:\.\d+)?)\s*(kg|g|l|liter|ml)\s*x\s*(\d+)/, countIndex: 3, amountIndex: 1, unitIndex: 2 },
+    { regex: /(\d+)\s*x\s*(\d+(?:\.\d+)?)\s*(kg|g|l|liter|ml)/, countIndex: 1, amountIndex: 2, unitIndex: 3 }
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern.regex) ?? text.replace(/\s+/g, "").match(pattern.regex);
+    if (!match) continue;
+    const count = toNumeric(match[pattern.countIndex]);
+    const amount = toNumeric(match[pattern.amountIndex]);
+    const unit = normalizeProductUnit(match[pattern.unitIndex]);
+    if (!count || count <= 1 || !amount || amount <= 0 || !unit) continue;
+    const convertedSingle = toComparisonQuantity(amount, unit);
+    const convertedTotal = toComparisonQuantity(amount * count, unit);
+    if (!convertedSingle || !convertedTotal) continue;
+    return {
+      count,
+      singleAmount: amount,
+      singleUnit: unit,
+      comparisonQuantity: convertedTotal.quantity,
+      comparisonUnit: convertedTotal.unit
+    };
+  }
+
+  return null;
+}
+
+function hasExplicitUnit(value: string | null | undefined) {
+  return /[a-zA-ZæøåÆØÅ]/.test(String(value ?? ""));
+}
+
+function packageDisplay(product: Product, observation?: Pick<Observation, "package_quantity" | "package_unit" | "comparison_unit"> | null) {
+  const packageQuantity = toNumeric(observation?.package_quantity);
+  const packageUnit = normalizeProductUnit(observation?.package_unit ?? observation?.comparison_unit ?? null);
+  const multipack = parseMultipackFromName(product.name);
+
+  if (
+    multipack &&
+    packageQuantity !== null &&
+    packageUnit === multipack.comparisonUnit &&
+    Math.abs(packageQuantity - multipack.comparisonQuantity) / Math.max(multipack.comparisonQuantity, 0.01) < 0.05 &&
+    !hasExplicitUnit(product.package_size)
+  ) {
+    return `${formatNumberNb(multipack.singleAmount)} ${multipack.singleUnit} x ${formatNumberNb(multipack.count, 0)} = ${formatNumberNb(packageQuantity)} ${packageUnit}`;
+  }
+
+  if (packageQuantity !== null && packageUnit) {
+    return formatQuantity(packageQuantity, packageUnit) ?? `${formatNumberNb(packageQuantity)} ${packageUnit}`;
+  }
+
+  if (product.package_size) return product.package_size;
+  return "Ukjent pakning";
+}
+
+function unitSuffix(unit: string | null | undefined) {
+  if (unit === "kg") return "kg";
+  if (unit === "l") return "l";
+  if (unit === "stk") return "stk";
+  return "enhet";
+}
+
+function unitSavings(current: ProductGroupPriceOption | null | undefined, cheapest: ProductGroupPriceOption | null | undefined) {
+  if (!current || !cheapest) return null;
+  if (current.product_id === cheapest.product_id) return null;
+  if (current.unit_price == null || cheapest.unit_price == null) return null;
+  if (current.comparison_unit !== cheapest.comparison_unit) return null;
+  const diff = current.unit_price - cheapest.unit_price;
+  if (!Number.isFinite(diff) || diff <= 0) return null;
+  return `${kr(diff)} billigere per ${unitSuffix(cheapest.comparison_unit)}`;
+}
 
 function toFormValue(value: string | number | boolean | null | undefined) {
   if (value === null || value === undefined) return "";
@@ -251,6 +418,10 @@ export default function ProductRulesPage() {
   }, [productId]);
 
   const latest = data?.price_observations?.[0] ?? null;
+  const productGroup = data?.product_group ?? null;
+  const cheapestGroupPrice = productGroup?.cheapest ?? null;
+  const scannedGroupPrice = productGroup?.scanned_product_best_price ?? null;
+  const groupSavings = unitSavings(scannedGroupPrice, cheapestGroupPrice);
   const stockTotal = useMemo(() => data?.inventory.reduce((sum, item) => sum + Number(item.quantity ?? 0), 0) ?? 0, [data]);
   const desiredTotal = useMemo(() => {
     const desiredValues = data?.inventory.map((item) => Number(item.desired_quantity ?? 0)) ?? [];
@@ -293,6 +464,10 @@ export default function ProductRulesPage() {
               </div>
               <h2 className="mt-4 text-xl font-semibold">{data.product.name}</h2>
               <p className="mt-1 text-sm text-muted">{data.product.brand ?? "Ukjent merke"} · EAN {data.product.ean ?? "mangler"}</p>
+              <div className="mt-3 rounded-2xl border border-line bg-white p-3 text-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">Pakning</p>
+                <p className="mt-1 text-lg font-semibold text-slate-900">{packageDisplay(data.product, latest)}</p>
+              </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 {data.product.is_basis ? <span className="pill bg-emerald-50 text-brand">Basisvarer</span> : <span className="pill bg-slate-100 text-muted">Ikke basis</span>}
                 {data.product.is_freezable ? <span className="pill bg-sky-50 text-sky-700">Kan fryses</span> : null}
@@ -302,12 +477,81 @@ export default function ProductRulesPage() {
 
             <div className="grid grid-cols-5 gap-5">
               <StatCard title="Siste pris" value={kr(latest?.price ?? null)} subtitle={latest ? `${latest.store_name} · ${priceSourceLabel(latest.source)}` : "Ingen prisdata"} />
-              <StatCard title="Enhetspris" value={unitPriceLabel(latest?.unit_price ?? null, latest?.comparison_unit ?? null)} subtitle="Innenfor samme EAN" tone="purple" />
+              <StatCard title="Enhetspris" value={unitPriceLabel(latest?.unit_price ?? null, latest?.comparison_unit ?? null)} subtitle={latest ? packageDisplay(data.product, latest) : "Ingen pakningsdata"} tone="purple" />
               <StatCard title="Målpris" value={kr(data.product.target_price)} subtitle={data.product.target_price_unit === "unit_price" ? "Per enhet" : "Per stk/pakke"} tone="amber" />
               <StatCard title="Lager" value={`${stockTotal} / ${desiredTotal}`} subtitle="Faktisk / ønsket" tone={stockTotal < desiredTotal ? "red" : "green"} />
               <StatCard title="Prisobservasjoner" value={String(data.price_observations.length)} subtitle={latest ? `Sist ${shortDateTime(latest.observed_at)} · ${priceSourceLabel(latest.source)}` : "Ingen prisdata"} tone="blue" />
             </div>
           </section>
+
+          {productGroup ? (
+            <section className="mt-5 grid grid-cols-[1fr_420px] gap-5">
+              <div className="card p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-brand">Overordnet vare</p>
+                    <h2 className="mt-1 text-2xl font-bold">{productGroup.name}</h2>
+                    <p className="mt-1 text-sm text-muted">
+                      {productGroup.package_count} forpakninger / EAN-varer kan sammenlignes på {unitSuffix(productGroup.comparison_unit)}.
+                    </p>
+                  </div>
+                  {cheapestGroupPrice ? (
+                    <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-right">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-brand">Beste kjøp nå</p>
+                      <p className="mt-1 text-2xl font-bold text-brand">{unitPriceLabel(cheapestGroupPrice.unit_price, cheapestGroupPrice.comparison_unit)}</p>
+                      <p className="mt-1 text-sm font-medium text-slate-700">{kr(cheapestGroupPrice.price)} · {cheapestGroupPrice.store_name}</p>
+                      <p className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-semibold ${currentPriceClass(cheapestGroupPrice)}`}>{currentPriceLabel(cheapestGroupPrice)} · {ageText(cheapestGroupPrice.age_days)}</p>
+                    </div>
+                  ) : null}
+                </div>
+
+                {cheapestGroupPrice ? (
+                  <div className="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-sm font-semibold text-brand">Anbefaling</p>
+                        <p className="mt-1 text-lg font-bold">{cheapestGroupPrice.product_name}</p>
+                        <p className="mt-1 text-sm text-muted">
+                          {cheapestGroupPrice.package_size ?? "Pakning ukjent"} · {priceSourceLabel(cheapestGroupPrice.source)}
+                        </p>
+                        <p className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-semibold ${currentPriceClass(cheapestGroupPrice)}`}>{currentPriceLabel(cheapestGroupPrice)} · {ageText(cheapestGroupPrice.age_days)}</p>
+                        {groupSavings ? <p className="mt-2 text-sm font-semibold text-brand">{groupSavings} enn denne forpakningen.</p> : null}
+                      </div>
+                      <div className="text-right">
+                        <p className="text-3xl font-bold text-brand">{unitPriceLabel(cheapestGroupPrice.unit_price, cheapestGroupPrice.comparison_unit)}</p>
+                        <p className="text-sm font-semibold text-slate-700">{kr(cheapestGroupPrice.price)}</p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-4 rounded-2xl bg-slate-50 p-4 text-sm text-muted">Ingen trygg nåpris funnet for overordnet vare. Skann hyllepris for å oppdatere.</p>
+                )}
+              </div>
+
+              <aside className="card p-5">
+                <h3 className="font-semibold">Beste forpakninger</h3>
+                <div className="mt-4 space-y-2">
+                  {(productGroup.price_options ?? []).slice(0, 5).map((option, index) => (
+                    <div key={`${option.product_id}:${option.store_code ?? option.store_name}:${option.observed_at ?? index}`} className={`rounded-xl p-3 text-sm ${option.is_scanned_product ? "bg-blue-50" : index === 0 ? "bg-emerald-50" : "bg-slate-50"}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold">{index + 1}. {option.package_size ?? option.product_name}</p>
+                          <p className="mt-1 truncate text-xs text-muted">{option.store_name} · {priceSourceLabel(option.source)}</p>
+                          <p className={`mt-2 inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${currentPriceClass(option)}`}>{currentPriceLabel(option)} · {ageText(option.age_days)}</p>
+                          {option.is_scanned_product ? <p className="mt-1 text-xs font-semibold text-blue-700">Denne forpakningen</p> : null}
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="font-bold text-brand">{unitPriceLabel(option.unit_price, option.comparison_unit)}</p>
+                          <p className="text-xs font-semibold text-slate-500">{kr(option.price)}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {!productGroup.price_options?.length ? <p className="text-sm text-muted">Ingen aktuelle alternativer de siste 45 dagene.</p> : null}
+                </div>
+              </aside>
+            </section>
+          ) : null}
 
           <div className="mt-6 grid grid-cols-[1fr_420px] gap-5">
             <section className="card p-5">
@@ -375,6 +619,8 @@ export default function ProductRulesPage() {
                         <div className="text-right">
                           <p className="font-bold text-brand">{kr(item.price)}</p>
                           <p className="text-xs font-semibold text-muted">{unitPriceLabel(item.unit_price, item.comparison_unit)}</p>
+                          <p className="text-[11px] font-medium text-slate-400">{packageDisplay(data.product, item)}</p>
+                          {item.unit_price_was_corrected ? <p className="mt-1 text-[11px] font-semibold text-amber-700">Korrigert fra pakning</p> : null}
                         </div>
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2">

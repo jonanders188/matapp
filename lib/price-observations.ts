@@ -1,4 +1,4 @@
-import { latestPriceDate, type KassalappProduct } from "@/lib/kassalapp";
+import { latestPriceDate, packageSize, type KassalappProduct } from "@/lib/kassalapp";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
 import { unitPricingColumnsForProduct } from "@/lib/unit-pricing";
 
@@ -144,7 +144,7 @@ export function priceObservationRows(
         category: Array.isArray(product.category)
           ? product.category.map((category) => category.name).filter(Boolean).join(", ")
           : product.category ?? null,
-        package_size: product.name ?? null
+        package_size: packageSize(product) ?? null
       },
       candidate.current_price!,
       candidate.current_unit_price ?? null
