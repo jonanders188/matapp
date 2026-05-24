@@ -36,6 +36,7 @@ type PriceObservationRow = {
   store_name: string;
   price: number;
   unit_price: number | null;
+  comparison_unit: string | null;
   observed_at: string;
   source: string | null;
   household_id: string | null;
@@ -57,6 +58,8 @@ type ProductComparison = {
   highestPrice: number | null;
   saving: number | null;
   storePrices: Record<string, number>;
+  storeUnitPrices: Record<string, number>;
+  storeComparisonUnits: Record<string, string>;
   freshStorePrices: Record<string, number>;
   storePriceAgeDays: Record<string, number>;
   storePriceFreshness: Record<string, PriceFreshness>;
@@ -281,7 +284,7 @@ export async function GET(request: Request) {
         .in("product_id", productIds),
       supabase
         .from("price_observations")
-        .select("product_id, store_code, store_name, price, unit_price, observed_at, source, household_id, observed_by_household_id, scope, visibility")
+        .select("product_id, store_code, store_name, price, unit_price, comparison_unit, observed_at, source, household_id, observed_by_household_id, scope, visibility")
         .in("product_id", productIds)
         .order("observed_at", { ascending: false })
         .limit(1500),
@@ -403,6 +406,8 @@ export async function GET(request: Request) {
       const lowest = sortedPrices[0] ?? null;
       const highest = sortedPrices[sortedPrices.length - 1] ?? null;
       const storePrices: Record<string, number> = {};
+      const storeUnitPrices: Record<string, number> = {};
+      const storeComparisonUnits: Record<string, string> = {};
       const freshStorePrices: Record<string, number> = {};
       const storePriceAgeDays: Record<string, number> = {};
       const storePriceFreshness: Record<string, PriceFreshness> = {};
@@ -414,6 +419,12 @@ export async function GET(request: Request) {
         if (!freshness) continue;
 
         storePrices[key] = toNumber(observation.price);
+        if (observation.unit_price !== null && observation.unit_price !== undefined) {
+          storeUnitPrices[key] = toNumber(observation.unit_price);
+        }
+        if (observation.comparison_unit) {
+          storeComparisonUnits[key] = observation.comparison_unit;
+        }
         storePriceAgeDays[key] = priceAgeDays(observation.observed_at, now);
         storePriceFreshness[key] = freshness;
 
@@ -435,6 +446,8 @@ export async function GET(request: Request) {
         highestPrice: highest ? toNumber(highest.price) : null,
         saving: lowest && highest ? Math.max(0, toNumber(highest.price) - toNumber(lowest.price)) : null,
         storePrices,
+        storeUnitPrices,
+        storeComparisonUnits,
         freshStorePrices,
         storePriceAgeDays,
         storePriceFreshness,

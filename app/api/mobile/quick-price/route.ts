@@ -11,6 +11,7 @@ import {
 import { canonicalStoreIdentity, normalizeStoreCode, priceProductsForProduct } from "@/lib/price-observations";
 import { findCanonicalProductByEan, insertProductWithoutDuplicate, PRODUCT_IDENTITY_SELECT } from "@/lib/product-identity";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
+import { unitPricingColumnsForProduct } from "@/lib/unit-pricing";
 
 type SaveMode = "none" | "global" | "basis";
 
@@ -397,6 +398,7 @@ export async function POST(request: Request) {
 
     const supabase = getSupabaseAdmin();
     const observedAt = new Date().toISOString();
+    const unitPricing = unitPricingColumnsForProduct(product, price);
     const { error } = await supabase.from("price_observations").insert({
       product_id: product.id,
       household_id: householdId,
@@ -406,7 +408,11 @@ export async function POST(request: Request) {
       store_code: store.storeKey,
       store_name: store.storeName,
       price,
-      unit_price: null,
+      unit_price: unitPricing.unit_price,
+      comparison_unit: unitPricing.comparison_unit,
+      package_quantity: unitPricing.package_quantity,
+      package_unit: unitPricing.package_unit,
+      unit_price_source: unitPricing.unit_price_source,
       observed_at: observedAt,
       source: "manual",
       source_url: null,
@@ -414,7 +420,8 @@ export async function POST(request: Request) {
         ean,
         saved_from: "mobile-quick-price",
         save_mode: saveMode,
-        captured_at: observedAt
+        captured_at: observedAt,
+        unit_pricing: unitPricing.raw_unit_pricing
       }
     });
 

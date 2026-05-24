@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { AppShell, StatCard } from "@/components/app-shell";
-import { kr } from "@/lib/utils";
+import { kr, unitPriceLabel } from "@/lib/utils";
 
 type Product = {
   id: string;
@@ -45,6 +45,9 @@ type Observation = {
   store_name: string;
   price: number;
   unit_price: number | null;
+  comparison_unit: string | null;
+  package_quantity?: number | null;
+  package_unit?: string | null;
   observed_at: string;
   source: string | null;
   source_url: string | null;
@@ -54,7 +57,7 @@ type DetailPayload = {
   product: Product;
   inventory: InventoryItem[];
   price_observations: Observation[];
-  latest_by_store: Array<{ store_name: string; price: number; unit_price: number | null; observed_at: string; source: string | null; source_url: string | null }>;
+  latest_by_store: Array<{ store_name: string; price: number; unit_price: number | null; comparison_unit: string | null; observed_at: string; source: string | null; source_url: string | null }>;
 };
 
 function shortDate(value?: string | null) {
@@ -297,8 +300,9 @@ export default function ProductRulesPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-4 gap-5">
+            <div className="grid grid-cols-5 gap-5">
               <StatCard title="Siste pris" value={kr(latest?.price ?? null)} subtitle={latest ? `${latest.store_name} · ${priceSourceLabel(latest.source)}` : "Ingen prisdata"} />
+              <StatCard title="Enhetspris" value={unitPriceLabel(latest?.unit_price ?? null, latest?.comparison_unit ?? null)} subtitle="Innenfor samme EAN" tone="purple" />
               <StatCard title="Målpris" value={kr(data.product.target_price)} subtitle={data.product.target_price_unit === "unit_price" ? "Per enhet" : "Per stk/pakke"} tone="amber" />
               <StatCard title="Lager" value={`${stockTotal} / ${desiredTotal}`} subtitle="Faktisk / ønsket" tone={stockTotal < desiredTotal ? "red" : "green"} />
               <StatCard title="Prisobservasjoner" value={String(data.price_observations.length)} subtitle={latest ? `Sist ${shortDateTime(latest.observed_at)} · ${priceSourceLabel(latest.source)}` : "Ingen prisdata"} tone="blue" />
@@ -368,7 +372,10 @@ export default function ProductRulesPage() {
                           <p className="font-medium">{item.store_name}</p>
                           <p className="text-xs text-muted">{shortDateTime(item.observed_at)} · {priceSourceLabel(item.source)}</p>
                         </div>
-                        <p className="font-bold text-brand">{kr(item.price)}</p>
+                        <div className="text-right">
+                          <p className="font-bold text-brand">{kr(item.price)}</p>
+                          <p className="text-xs font-semibold text-muted">{unitPriceLabel(item.unit_price, item.comparison_unit)}</p>
+                        </div>
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2">
                         <button type="button" onClick={() => editPriceObservation(item)} className="rounded-lg border border-line px-3 py-1 text-xs font-semibold text-slate-700">

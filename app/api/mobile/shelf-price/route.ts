@@ -10,6 +10,7 @@ import {
 import { canonicalStoreIdentity, normalizeStoreCode as normalizeKnownStoreCode } from "@/lib/price-observations";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
 import { findCanonicalProductByEan, insertProductWithoutDuplicate, PRODUCT_IDENTITY_SELECT } from "@/lib/product-identity";
+import { unitPricingColumnsForProduct } from "@/lib/unit-pricing";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -211,6 +212,7 @@ export async function POST(request: Request) {
 
     const supabase = getSupabaseAdmin();
     const storeIdentity = canonicalStoreIdentity(store.store_key, store.store_name);
+    const unitPricing = unitPricingColumnsForProduct(productResult.product, price);
     const { error } = await supabase.from("price_observations").insert({
       product_id: productResult.product.id,
       household_id: householdId,
@@ -220,7 +222,11 @@ export async function POST(request: Request) {
       store_code: storeIdentity.store_code,
       store_name: storeIdentity.store_name,
       price,
-      unit_price: null,
+      unit_price: unitPricing.unit_price,
+      comparison_unit: unitPricing.comparison_unit,
+      package_quantity: unitPricing.package_quantity,
+      package_unit: unitPricing.package_unit,
+      unit_price_source: unitPricing.unit_price_source,
       observed_at: new Date().toISOString(),
       source: "shelf-edge",
       source_url: null,
@@ -228,6 +234,7 @@ export async function POST(request: Request) {
         ean,
         raw_text: body.rawText ?? null,
         captured_at: new Date().toISOString(),
+        unit_pricing: unitPricing.raw_unit_pricing,
         requested_store_key: body.storeKey ?? null,
         requested_store_name: body.storeName ?? null
       }

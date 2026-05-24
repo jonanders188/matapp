@@ -533,9 +533,25 @@ function parseReceiptText(text: string): ReceiptLine[] {
 }
 
 function receiptLineFromImportLine(line: ReceiptImportLine): ReceiptLine {
-  const unitPrice = Number(line.unitPrice ?? line.price ?? 0);
-  const quantity = normalizeBoughtQuantity(Number(line.quantity ?? 1));
-  const totalPrice = Number(line.totalPrice ?? line.lineTotal ?? unitPrice * quantity);
+  const rawUnitPrice = Number(line.unitPrice ?? line.price ?? 0);
+  const rawQuantity = Number(line.quantity ?? 1);
+  const rawTotalPrice = Number(line.totalPrice ?? line.lineTotal ?? rawUnitPrice * rawQuantity);
+
+  // AI/OCR can occasionally split a total price like 27,03 into
+  // quantity=99 and unitPrice=0,03 for variable-weight or loose items.
+  // Keep the receipt line useful for manual scanning by treating this as
+  // one line with the total price as the unit price.
+  const suspiciousQuantityPriceSplit =
+    rawQuantity >= 50 &&
+    rawUnitPrice > 0 &&
+    rawUnitPrice < 1 &&
+    rawTotalPrice > 1;
+
+  const unitPrice = suspiciousQuantityPriceSplit ? rawTotalPrice : rawUnitPrice;
+  const quantity = normalizeBoughtQuantity(suspiciousQuantityPriceSplit ? 1 : rawQuantity);
+  const totalPrice = Number.isFinite(rawTotalPrice) && rawTotalPrice > 0
+    ? rawTotalPrice
+    : unitPrice * quantity;
 
   return {
     id: line.id,
@@ -547,6 +563,7 @@ function receiptLineFromImportLine(line: ReceiptImportLine): ReceiptLine {
     totalPrice: Number.isFinite(totalPrice) && totalPrice > 0 ? totalPrice : unitPrice * quantity
   };
 }
+
 
 function receiptLineFromAiItem(item: ReceiptAiItem, index: number): ReceiptLine | null {
   const name = String(item.name ?? "").replace(/\s+/g, " ").trim();

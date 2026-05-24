@@ -114,14 +114,14 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 
     const priceResult = await supabase
       .from("price_observations")
-      .select("id, store_code, store_name, price, unit_price, observed_at, source, source_url")
+      .select("id, store_code, store_name, price, unit_price, comparison_unit, package_quantity, package_unit, observed_at, source, source_url")
       .eq("product_id", id)
       .order("observed_at", { ascending: false })
       .limit(80);
 
     if (priceResult.error) throw priceResult.error;
 
-    const latestByStore = new Map<string, { store_name: string; price: number; unit_price: number | null; observed_at: string; source: string | null; source_url: string | null }>();
+    const latestByStore = new Map<string, { store_name: string; price: number; unit_price: number | null; comparison_unit: string | null; observed_at: string; source: string | null; source_url: string | null }>();
     for (const observation of priceResult.data ?? []) {
       const key = observation.store_code || observation.store_name;
       const existing = latestByStore.get(key);
@@ -130,6 +130,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
           store_name: observation.store_name,
           price: observation.price,
           unit_price: observation.unit_price,
+          comparison_unit: observation.comparison_unit ?? null,
           observed_at: observation.observed_at,
           source: observation.source,
           source_url: observation.source_url

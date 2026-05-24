@@ -231,6 +231,7 @@ export async function GET(request: Request) {
       store_name: string | null;
       price: number | null;
       unit_price: number | null;
+      comparison_unit: string | null;
       observed_at: string | null;
     };
 
@@ -245,7 +246,7 @@ export async function GET(request: Request) {
     for (let from = 0; ; from += pageSize) {
       const page = await supabase
         .from("price_observations")
-        .select("product_id, store_name, price, unit_price, observed_at")
+        .select("product_id, store_name, price, unit_price, comparison_unit, observed_at")
         .in("product_id", productIds)
         .order("observed_at", { ascending: false })
         .range(from, from + pageSize - 1);
@@ -267,6 +268,7 @@ export async function GET(request: Request) {
         price_observation_count: number;
         latest_price: number | null;
         latest_unit_price: number | null;
+        latest_comparison_unit: string | null;
         latest_store: string | null;
         latest_observed_at: string | null;
       }
@@ -277,6 +279,7 @@ export async function GET(request: Request) {
         price_observation_count: 0,
         latest_price: null,
         latest_unit_price: null,
+        latest_comparison_unit: null,
         latest_store: null,
         latest_observed_at: null
       };
@@ -286,6 +289,7 @@ export async function GET(request: Request) {
       if (!current.latest_observed_at) {
         current.latest_price = observation.price;
         current.latest_unit_price = observation.unit_price;
+        current.latest_comparison_unit = observation.comparison_unit;
         current.latest_store = observation.store_name;
         current.latest_observed_at = observation.observed_at;
       }
@@ -300,6 +304,7 @@ export async function GET(request: Request) {
           price_observation_count: 0,
           latest_price: null,
           latest_unit_price: null,
+          latest_comparison_unit: null,
           latest_store: null,
           latest_observed_at: null
         })

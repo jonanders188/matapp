@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AppShell, StatCard } from "@/components/app-shell";
 import { authFetch } from "@/lib/auth-fetch";
-import { kr } from "@/lib/utils";
+import { kr, unitPriceLabel } from "@/lib/utils";
 
 type ProductComparison = {
   productId: string;
@@ -19,6 +19,8 @@ type ProductComparison = {
   highestPrice: number | null;
   saving: number | null;
   storePrices: Record<string, number>;
+  storeUnitPrices: Record<string, number>;
+  storeComparisonUnits: Record<string, string>;
   storePriceAgeDays: Record<string, number>;
   storePriceFreshness: Record<string, "fresh" | "fallback">;
   imageUrl: string | null;
@@ -270,6 +272,8 @@ export default function PricesPage() {
                       {visibleStores.map((store) => {
                         const price = product.storePrices[store.storeKey];
                         const freshness = product.storePriceFreshness[store.storeKey];
+                        const unitPrice = product.storeUnitPrices[store.storeKey];
+                        const comparisonUnit = product.storeComparisonUnits[store.storeKey];
                         const ageLabel = priceAgeLabel(product.storePriceAgeDays[store.storeKey]);
                         const isLowest = freshness === "fresh" && product.lowestStoreKey === store.storeKey;
 
@@ -280,6 +284,9 @@ export default function PricesPage() {
                             ) : (
                               <div>
                                 <span>{kr(price)}</span>
+                                {unitPrice !== undefined ? (
+                                  <p className="text-[11px] font-normal text-muted">{unitPriceLabel(unitPrice, comparisonUnit)}</p>
+                                ) : null}
                                 {freshness === "fallback" && ageLabel ? (
                                   <p className="text-[11px] font-normal text-muted">{ageLabel} gammel</p>
                                 ) : null}
@@ -354,7 +361,7 @@ export default function PricesPage() {
           <section className="card p-5">
             <h2 className="font-semibold">Hva sammenlignes?</h2>
             <p className="mt-3 text-sm text-muted">
-              Prissammenligningen bruker bare produkter som ligger i basisutvalget. Butikkrangeringen bruker en parvis prisindeks: hvert butikkpar sammenlignes bare på produktene der begge har gyldig pris siste 14 dager. Par med færre enn 3 felles produkter hoppes over. Priser mellom 15 og 30 dager vises bare som gammel fallback i produkttabellen, men teller ikke i rangeringen.
+              Prissammenligningen bruker fortsatt konkret EAN/produkt. Enhetspris vises som støtteinformasjon innenfor samme EAN. Butikkrangeringen bruker en parvis prisindeks: hvert butikkpar sammenlignes bare på produktene der begge har gyldig pris siste 14 dager. Par med færre enn 3 felles produkter hoppes over. Priser mellom 15 og 30 dager vises bare som gammel fallback i produkttabellen, men teller ikke i rangeringen.
             </p>
             <Link href="/products" className="mt-4 inline-flex rounded-xl border border-line px-4 py-2 text-sm font-medium text-brand">
               Administrer basisvarer

@@ -1,5 +1,6 @@
 import { latestPriceDate, type KassalappProduct } from "@/lib/kassalapp";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
+import { unitPricingColumnsForProduct } from "@/lib/unit-pricing";
 
 type PriceObservationInput = {
   product_id: string;
@@ -7,6 +8,10 @@ type PriceObservationInput = {
   store_name: string;
   price: number;
   unit_price: number | null;
+  comparison_unit: string | null;
+  package_quantity: number | null;
+  package_unit: string | null;
+  unit_price_source: string | null;
   observed_at: string;
   source: string;
   source_url: string | null;
@@ -131,17 +136,39 @@ export function priceObservationRows(
   relatedProducts: KassalappProduct[] = [],
   source = "kassalapp"
 ): PriceObservationInput[] {
-  return priceProductsForProduct(product, relatedProducts).map((candidate) => ({
-    product_id: productId,
-    store_code: normalizeStoreCode(candidate.store!.code || candidate.store!.name),
-    store_name: canonicalStoreName(candidate.store!.code || candidate.store!.name, candidate.store!.name),
-    price: candidate.current_price!,
-    unit_price: candidate.current_unit_price ?? null,
-    observed_at: observedAt(candidate),
-    source,
-    source_url: candidate.url ?? null,
-    raw: candidate
-  }));
+  return priceProductsForProduct(product, relatedProducts).map((candidate) => {
+    const unitPricing = unitPricingColumnsForProduct(
+      {
+        name: product.name,
+        brand: product.brand ?? null,
+        category: Array.isArray(product.category)
+          ? product.category.map((category) => category.name).filter(Boolean).join(", ")
+          : product.category ?? null,
+        package_size: product.name ?? null
+      },
+      candidate.current_price!,
+      candidate.current_unit_price ?? null
+    );
+
+    return {
+      product_id: productId,
+      store_code: normalizeStoreCode(candidate.store!.code || candidate.store!.name),
+      store_name: canonicalStoreName(candidate.store!.code || candidate.store!.name, candidate.store!.name),
+      price: candidate.current_price!,
+      unit_price: unitPricing.unit_price,
+      comparison_unit: unitPricing.comparison_unit,
+      package_quantity: unitPricing.package_quantity,
+      package_unit: unitPricing.package_unit,
+      unit_price_source: unitPricing.unit_price_source,
+      observed_at: observedAt(candidate),
+      source,
+      source_url: candidate.url ?? null,
+      raw: {
+        ...candidate,
+        unit_pricing: unitPricing.raw_unit_pricing
+      }
+    };
+  });
 }
 
 export async function insertPriceObservations(

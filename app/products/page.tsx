@@ -4,7 +4,7 @@ import Link from "next/link";
 import { authFetch } from "@/lib/auth-fetch";
 import { useEffect, useMemo, useState } from "react";
 import { AppShell, StatCard } from "@/components/app-shell";
-import { kr } from "@/lib/utils";
+import { kr, unitPriceLabel } from "@/lib/utils";
 
 type BasisSortKey = "name" | "category" | "desired" | "target" | "latest" | "missingPrice" | "updated";
 
@@ -22,6 +22,7 @@ type BasisProduct = {
   is_basis: boolean | null;
   latest_price?: number | null;
   latest_unit_price?: number | null;
+  latest_comparison_unit?: string | null;
   latest_store?: string | null;
   latest_observed_at?: string | null;
   price_observation_count?: number;
@@ -230,6 +231,7 @@ export default function ProductsPage() {
                   <td className="px-4 py-3 text-muted">{kr(product.target_price)}</td>
                   <td className="px-4 py-3">
                     <p className="font-semibold text-brand">{kr(product.latest_price ?? null)}</p>
+                    <p className="text-xs font-semibold text-muted">{unitPriceLabel(product.latest_unit_price ?? null, product.latest_comparison_unit ?? null)}</p>
                     <p className="text-xs text-muted">{product.latest_store ?? "Ikke synket"}</p>
                   </td>
                   <td className="px-4 py-3">

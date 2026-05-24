@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { apiErrorResponse, requireCurrentHousehold } from "@/lib/current-household";
 import { canonicalStoreIdentity, normalizeStoreCode } from "@/lib/price-observations";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
+import { unitPricingColumnsForProduct } from "@/lib/unit-pricing";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -11,6 +12,139 @@ type ReceiptItem = { id: string; name: string; quantity: number; unit: "stk"; li
 type ParsedReceipt = { storeKey: string | null; storeName: string | null; storeConfidence: number; receiptDate: string | null; items: ReceiptItem[]; warnings: string[] };
 type BasisCandidate = { productId: string; ean: string | null; name: string; brand: string | null; category: string | null; packageSize: string | null; latestPrice: number | null; latestStorePrice: number | null; medianPrice: number | null; medianStorePrice: number | null; minRecentPrice: number | null; maxRecentPrice: number | null; priceObservationCount: number };
 type AiMatch = { receiptLineId: string; productId: string | null; confidence: number; priceStatus: "normal" | "plausible_store_difference" | "suspicious" | "unknown"; shouldAutoImport: boolean; reason: string; warning: string | null };
+
+async function insertPriceObservationRowsIgnoringDuplicates(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  rows: Array<Record<string, unknown>>
+) {
+  let inserted = 0;
+  let duplicates = 0;
+  let updatedDuplicates = 0;
+
+  for (const row of rows) {
+    const insertResult = await supabase.from("price_observations").insert(row);
+    if (!insertResult.error) {
+      inserted += 1;
+      continue;
+    }
+
+    const message = insertResult.error.message ?? "";
+    if (insertResult.error.code === "23505" || message.includes("duplicate key value")) {
+      duplicates += 1;
+
+      const productId = typeof row.product_id === "string" ? row.product_id : null;
+      const storeCode = typeof row.store_code === "string" ? row.store_code : null;
+      const storeName = typeof row.store_name === "string" ? row.store_name : null;
+      const source = typeof row.source === "string" ? row.source : null;
+      const observedAt = typeof row.observed_at === "string" ? row.observed_at : null;
+      const price = typeof row.price === "number" || typeof row.price === "string" ? row.price : null;
+
+      if (productId && storeCode && storeName && source && observedAt && price !== null) {
+        const updateResult = await supabase
+          .from("price_observations")
+          .update({
+            unit_price: row.unit_price ?? null,
+            comparison_unit: row.comparison_unit ?? null,
+            package_quantity: row.package_quantity ?? null,
+            package_unit: row.package_unit ?? null,
+            unit_price_source: row.unit_price_source ?? null,
+            raw: row.raw ?? null
+          })
+          .eq("product_id", productId)
+          .eq("store_code", storeCode)
+          .eq("store_name", storeName)
+          .eq("source", source)
+          .eq("observed_at", observedAt)
+          .eq("price", price);
+
+        if (updateResult.error) throw updateResult.error;
+        updatedDuplicates += 1;
+      }
+
+      continue;
+    }
+
+    throw insertResult.error;
+  }
+
+  return { inserted, duplicates, updatedDuplicates };
+}
+
+async function safeInsertPriceObservationRows(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  rows: Array<Record<string, unknown>>
+) {
+  let inserted = 0;
+  let duplicates = 0;
+  let enriched = 0;
+
+  for (const row of rows) {
+    const insertResult = await supabase.from("price_observations").insert(row);
+
+    if (!insertResult.error) {
+      inserted += 1;
+      continue;
+    }
+
+    const message = insertResult.error.message ?? "";
+    const isDuplicate = insertResult.error.code === "23505" || message.includes("duplicate key value");
+
+    if (!isDuplicate) {
+      console.error("[receipt-import] price observation insert failed", {
+        code: insertResult.error.code,
+        message: insertResult.error.message,
+        details: insertResult.error.details,
+        hint: insertResult.error.hint,
+        row
+      });
+      throw insertResult.error;
+    }
+
+    duplicates += 1;
+
+    const productId = typeof row.product_id === "string" ? row.product_id : null;
+    const source = typeof row.source === "string" ? row.source : null;
+    const observedAt = typeof row.observed_at === "string" ? row.observed_at : null;
+    const price = typeof row.price === "number" || typeof row.price === "string" ? row.price : null;
+
+    if (productId && source && observedAt && price !== null) {
+      let update = supabase
+        .from("price_observations")
+        .update({
+          unit_price: row.unit_price ?? null,
+          comparison_unit: row.comparison_unit ?? null,
+          package_quantity: row.package_quantity ?? null,
+          package_unit: row.package_unit ?? null,
+          unit_price_source: row.unit_price_source ?? null,
+          raw: row.raw ?? null
+        })
+        .eq("product_id", productId)
+        .eq("source", source)
+        .eq("observed_at", observedAt)
+        .eq("price", price)
+        .is("unit_price_source", null);
+
+      const storeCode = typeof row.store_code === "string" ? row.store_code : null;
+      const storeName = typeof row.store_name === "string" ? row.store_name : null;
+      if (storeCode) update = update.eq("store_code", storeCode);
+      if (storeName) update = update.eq("store_name", storeName);
+
+      const updateResult = await update;
+      if (updateResult.error) {
+        console.warn("[receipt-import] duplicate enrichment failed", {
+          code: updateResult.error.code,
+          message: updateResult.error.message,
+          details: updateResult.error.details,
+          hint: updateResult.error.hint
+        });
+      } else {
+        enriched += 1;
+      }
+    }
+  }
+
+  return { inserted, duplicates, enriched };
+}
 
 function asNumber(value: unknown, fallback = 0) {
   const number = typeof value === "number" ? value : Number(value);
@@ -289,6 +423,7 @@ export async function POST(request: Request) {
         reason: string;
         warning: string | null;
         line: { id: string; name?: string; text?: string; unitPrice?: number; price?: number; quantity?: number; lineTotal?: number; totalPrice?: number } | null;
+        product?: { productId?: string; name?: string; brand?: string | null; category?: string | null; packageSize?: string | null } | null;
       }>;
       remainingLines?: Array<{ id: string; name?: string; text?: string; unitPrice?: number; price?: number; quantity?: number; lineTotal?: number; totalPrice?: number; warning?: string | null }>;
     } | null;
@@ -330,6 +465,16 @@ export async function POST(request: Request) {
 
         if (!unitPrice || unitPrice <= 0 || unitPrice > 10000) return [];
 
+        const unitPricing = unitPricingColumnsForProduct(
+          {
+            name: match.product?.name ?? lineName,
+            brand: match.product?.brand ?? null,
+            category: match.product?.category ?? null,
+            package_size: match.product?.packageSize ?? null
+          },
+          unitPrice
+        );
+
         return [{
           product_id: match.productId,
           household_id: current.householdId,
@@ -339,7 +484,11 @@ export async function POST(request: Request) {
           store_code: storeIdentity.store_code,
           store_name: storeIdentity.store_name,
           price: unitPrice,
-          unit_price: null,
+          unit_price: unitPricing.unit_price,
+          comparison_unit: unitPricing.comparison_unit,
+          package_quantity: unitPricing.package_quantity,
+          package_unit: unitPricing.package_unit,
+          unit_price_source: unitPricing.unit_price_source,
           observed_at: observedAt,
           source: "receipt-ai-auto",
           source_url: null,
@@ -354,15 +503,15 @@ export async function POST(request: Request) {
             ai_warning: match.warning,
             price_status: match.priceStatus,
             imported_at: new Date().toISOString(),
-            fast_import: true
+            fast_import: true,
+            unit_pricing: unitPricing.raw_unit_pricing
           }
         }];
       });
 
-      if (rows.length) {
-        const insertResult = await supabase.from("price_observations").insert(rows);
-        if (insertResult.error) throw insertResult.error;
-      }
+      const importResult = rows.length
+        ? await safeInsertPriceObservationRows(supabase, rows)
+        : { inserted: 0, duplicates: 0, enriched: 0 };
 
       return NextResponse.json({
         data: {
@@ -376,9 +525,10 @@ export async function POST(request: Request) {
           reviewMatches: [],
           unmatchedLines: [],
           remainingLines: body.remainingLines ?? [],
-          importedCount: rows.length,
+          importedCount: importResult.inserted,
+          duplicateCount: importResult.duplicates,
           importConfirmed: true,
-          warnings: []
+          warnings: importResult.duplicates ? [`${importResult.duplicates} prisobservasjoner fantes allerede. ${importResult.enriched ?? 0} ble oppdatert med enhetsprisdata.`] : []
         }
       });
     }
@@ -413,7 +563,17 @@ export async function POST(request: Request) {
       const rows = secureMatches.flatMap((match) => {
         const line = lineById.get(match.receiptLineId);
         if (!line || !match.productId) return [];
-        return [{ product_id: match.productId, household_id: current.householdId, observed_by_household_id: current.householdId, scope: "global", visibility: "public", store_code: storeIdentity.store_code, store_name: storeIdentity.store_name, price: line.unitPrice, unit_price: null, observed_at: observedAt, source: "receipt-ai-auto", source_url: null, raw: { receipt_line_id: line.id, receipt_line_text: line.name, receipt_quantity: line.quantity, receipt_total_price: line.lineTotal, receipt_unit_price: line.unitPrice, ai_confidence: match.confidence, ai_reason: match.reason, ai_warning: match.warning, price_status: match.priceStatus, imported_at: new Date().toISOString() } }];
+        const candidate = candidateById.get(match.productId);
+        const unitPricing = unitPricingColumnsForProduct(
+          {
+            name: candidate?.name ?? line.name,
+            brand: candidate?.brand ?? null,
+            category: candidate?.category ?? null,
+            package_size: candidate?.packageSize ?? null
+          },
+          line.unitPrice
+        );
+        return [{ product_id: match.productId, household_id: current.householdId, observed_by_household_id: current.householdId, scope: "global", visibility: "public", store_code: storeIdentity.store_code, store_name: storeIdentity.store_name, price: line.unitPrice, unit_price: unitPricing.unit_price, comparison_unit: unitPricing.comparison_unit, package_quantity: unitPricing.package_quantity, package_unit: unitPricing.package_unit, unit_price_source: unitPricing.unit_price_source, observed_at: observedAt, source: "receipt-ai-auto", source_url: null, raw: { receipt_line_id: line.id, receipt_line_text: line.name, receipt_quantity: line.quantity, receipt_total_price: line.lineTotal, receipt_unit_price: line.unitPrice, ai_confidence: match.confidence, ai_reason: match.reason, ai_warning: match.warning, price_status: match.priceStatus, imported_at: new Date().toISOString(), unit_pricing: unitPricing.raw_unit_pricing } }];
       });
       if (rows.length) {
         const insertResult = await supabase.from("price_observations").insert(rows);
@@ -424,6 +584,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ data: { needsStoreConfirmation: false, storeKey: storeMatch.store.storeKey, storeName: storeIdentity.store_name, receiptDate: parsed.receiptDate, observedAt, linesRead: parsed.items.length, basisCandidates: candidates.length, secureMatches: secureMatches.map((match) => ({ ...match, line: lineById.get(match.receiptLineId) ?? null, product: match.productId ? candidateById.get(match.productId) ?? null : null })), reviewMatches: reviewMatches.map((match) => ({ ...match, line: lineById.get(match.receiptLineId) ?? null, product: match.productId ? candidateById.get(match.productId) ?? null : null })), unmatchedLines, remainingLines, importedCount: insertedCount, importConfirmed: Boolean(body?.importConfirmed), warnings: parsed.warnings } });
   } catch (error) {
+    console.error("[receipt-import] request failed", error);
     return apiErrorResponse(error);
   }
 }
