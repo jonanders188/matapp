@@ -308,7 +308,7 @@ function normalizeAiGroup(value: unknown, allowedProductIds: Set<string>): AiGro
     category: cleanText(group.category) || null,
     comparison_unit: cleanText(group.comparison_unit) || null,
     confidence,
-    reason: cleanText(group.reason) || "AI foreslo gruppen basert på navn, merke, kategori, enhetspris og pakning.",
+    reason: cleanText(group.reason) || "AI foreslo overordnet vare basert på navn, merke, kategori, enhetspris og pakning.",
     members
   };
 }
@@ -381,18 +381,18 @@ async function askAiForGroups(candidateSet: ProductCandidate[]): Promise<AiGroup
           content: [
             {
               type: "input_text",
-              text: `Du er System Admin-assistent for en norsk dagligvareapp. Oppgaven er å foreslå globale produktgrupper for faktisk vare, ikke pakning.
+              text: `Du er System Admin-assistent for en norsk dagligvareapp. Oppgaven er å foreslå globale overordnede varer, ikke pakning.
 
 Regler:
-- Prisobservasjoner beholdes på konkret EAN. Du foreslår bare sammenligningsgrupper.
+- Prisobservasjoner beholdes på konkret EAN. Du foreslår bare overordnede varer for sammenligning.
 - Gruppér kun produkter som forbruker trygt kan sammenligne på enhetspris.
 - Ignorer pakningsstørrelse når varen ellers er samme faktiske vare.
 - Vær mindre streng i forslagene. Ta med sannsynlige kandidater og varianter, fordi System Admin kan fjerne produkter før godkjenning. Ikke ta med åpenbart feil kategori.
 - Vanlig vs glutenfri, blokk vs skivet, original vs lett/sukkerfri er normalt variant, ikke samme_product_different_package.
 - Bruk same_product_different_package bare når det faktisk er samme vare med annen størrelse.
 - Bruk same_product_variant når samme produktfamilie, men variant/form gjør at admin må vurdere.
-- Ikke inkluder not_comparable-medlemmer i grupper.
-- Skriv korte norske begrunnelser.`
+- Ikke inkluder not_comparable-EAN-varer i overordnede varer.
+- Skriv korte norske begrunnelser. Hvis søket gjelder melkesjokolade, skill mellom sjokoladeplate, iskremvariant og smøreostvariant, men ta gjerne med varianter for System Admin-vurdering.`
             }
           ]
         },

@@ -49,7 +49,7 @@ export async function DELETE(
         otherMembers.map((other) => ({
           productIdA: String(member.product_id),
           productIdB: String(other.product_id),
-          reason: "System Admin tok produktet ut av en godkjent produktgruppe.",
+          reason: "System Admin tok EAN-varen ut av en godkjent overordnet vare.",
           source: "system_admin_removed_member" as const,
           createdBy: admin.userId === "00000000-0000-0000-0000-000000000000" ? null : admin.userId
         }))

@@ -116,7 +116,7 @@ export default function ProductGroupsAdminPage() {
     const response = await authFetch("/api/admin/product-groups");
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(payload?.error ?? "Kunne ikke hente produktgrupper");
+      throw new Error(payload?.error ?? "Kunne ikke hente overordnede varer");
     }
     setData(payload);
   }
@@ -170,12 +170,12 @@ export default function ProductGroupsAdminPage() {
     setSaving(false);
 
     if (!response.ok) {
-      setError(payload?.error ?? "Kunne ikke opprette produktgruppe");
+      setError(payload?.error ?? "Kunne ikke opprette overordnet vare");
       return;
     }
 
     setForm({ name: "", brand: "", category: "", comparison_unit: "kg", description: "" });
-    setNotice("Produktgruppen ble opprettet.");
+    setNotice("Overordnet vare ble opprettet.");
     await load();
   }
 
@@ -256,7 +256,7 @@ export default function ProductGroupsAdminPage() {
 
     setNotice(
       action === "approve"
-        ? `Forslaget ble godkjent med ${payload.memberCount ?? 0} medlemmer. ${payload.negativeMatchCount ?? 0} negative matcher ble lagret.`
+        ? `Forslaget ble godkjent med ${payload.memberCount ?? 0} EAN-varer. ${payload.negativeMatchCount ?? 0} negative matcher ble lagret.`
         : `Forslaget ble avvist. ${payload.negativeMatchCount ?? 0} negative matcher ble lagret.`
     );
     await load();
@@ -275,11 +275,11 @@ export default function ProductGroupsAdminPage() {
     const payload = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      setError(payload?.error ?? "Kunne ikke ta produktet ut av gruppen");
+      setError(payload?.error ?? "Kunne ikke ta EAN-varen ut av den overordnede varenn");
       return;
     }
 
-    setNotice(`Produktet ble tatt ut av gruppen. ${payload.negativeMatchCount ?? 0} negative matcher ble lagret.`);
+    setNotice(`EAN-varen ble tatt ut av den overordnede varenn. ${payload.negativeMatchCount ?? 0} negative matcher ble lagret.`);
     await load();
   }
 
@@ -290,10 +290,10 @@ export default function ProductGroupsAdminPage() {
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-white/70">System Admin</p>
           <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <h1 className="text-3xl font-bold">Produktgrupper</h1>
+              <h1 className="text-3xl font-bold">Overordnede varer</h1>
               <p className="mt-2 max-w-3xl text-white/80">
-                Løsningen foreslår globale grupper for faktisk vare på tvers av EAN og pakningsstørrelser.
-                System Admin godkjenner før gruppene brukes i vanlig brukerflate.
+                Løsningen foreslår globale overordnede varer på tvers av EAN og pakningsstørrelser.
+                System Admin godkjenner før de overordnede varene brukes i vanlig brukerflate.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -312,6 +312,12 @@ export default function ProductGroupsAdminPage() {
               >
                 Oppdater
               </button>
+              <a
+                href="/admin/product-groups/merge"
+                className="rounded-2xl bg-white/10 px-4 py-3 text-sm font-bold text-white ring-1 ring-white/30"
+              >
+                Slå sammen overordnede varer
+              </a>
             </div>
           </div>
         </section>
@@ -324,8 +330,8 @@ export default function ProductGroupsAdminPage() {
         ) : null}
 
         <section className="grid gap-4 md:grid-cols-3">
-          <StatCard title="Grupper" value={String(groups.length)} subtitle="Godkjente produktgrupper" tone="green" />
-          <StatCard title="Medlemmer" value={String(memberCount)} subtitle="EAN-produkter i grupper" tone="amber" />
+          <StatCard title="Overordnede varer" value={String(groups.length)} subtitle="Godkjente overordnede varer" tone="green" />
+          <StatCard title="EAN-varer" value={String(memberCount)} subtitle="EAN-produkter i grupper" tone="amber" />
           <StatCard title="AI-forslag" value={String(suggestions.length)} subtitle="Venter på godkjenning" tone="purple" />
         </section>
 
@@ -343,7 +349,7 @@ export default function ProductGroupsAdminPage() {
                     checked={rememberRemovedMembers}
                     onChange={(event) => setRememberRemovedMembers(event.target.checked)}
                   />
-                  Husk bortvalgte produkter som ikke sammenlignbare med godkjente medlemmer
+                  Husk bortvalgte EAN-varer som ikke sammenlignbare med godkjente EAN-varer
                 </label>
                 <label className="flex items-center gap-2">
                   <input
@@ -445,19 +451,19 @@ export default function ProductGroupsAdminPage() {
               ))
             ) : (
               <p className="rounded-2xl bg-slate-50 p-4 text-sm text-muted">
-                Ingen ventende forslag. Trykk “Lag AI-forslag” for å analysere produkter uten gruppe.
+                Ingen ventende forslag. Trykk “Lag AI-forslag” for å analysere produkter uten overordnet vare.
               </p>
             )}
           </div>
         </section>
 
         <section className="rounded-3xl border border-line bg-white p-5 shadow-soft">
-          <h2 className="text-xl font-bold">Opprett manuell gruppe</h2>
+          <h2 className="text-xl font-bold">Opprett overordnet vare manuelt</h2>
           <p className="mt-1 text-sm text-muted">Brukes til korrigering og test. AI-forslag er hovedflyten.</p>
 
           <form onSubmit={createGroup} className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
             <label className="text-sm font-semibold">
-              Gruppenavn
+              Navn på overordnet vare
               <input
                 value={form.name}
                 onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
@@ -501,7 +507,7 @@ export default function ProductGroupsAdminPage() {
               disabled={saving}
               className="self-end rounded-2xl bg-brand px-4 py-3 text-sm font-bold text-white disabled:opacity-50"
             >
-              {saving ? "Lagrer..." : "Opprett gruppe"}
+              {saving ? "Lagrer..." : "Opprett overordnet vare"}
             </button>
             <label className="md:col-span-2 xl:col-span-5 text-sm font-semibold">
               Beskrivelse
@@ -516,7 +522,7 @@ export default function ProductGroupsAdminPage() {
         </section>
 
         <section className="rounded-3xl border border-line bg-white p-5 shadow-soft">
-          <h2 className="text-xl font-bold">Godkjente grupper</h2>
+          <h2 className="text-xl font-bold">Godkjente overordnede varer</h2>
           <div className="mt-4 space-y-3">
             {groups.length ? (
               groups.map((group) => (
@@ -530,7 +536,7 @@ export default function ProductGroupsAdminPage() {
                       {group.description ? <p className="mt-2 text-sm text-slate-700">{group.description}</p> : null}
                     </div>
                     <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-brand">
-                      {group.product_group_members?.length ?? 0} medlemmer
+                      {group.product_group_members?.length ?? 0} EAN-varer
                     </span>
                   </div>
 
@@ -556,13 +562,13 @@ export default function ProductGroupsAdminPage() {
                       ))}
                     </div>
                   ) : (
-                    <p className="mt-3 text-sm text-muted">Ingen medlemmer ennå.</p>
+                    <p className="mt-3 text-sm text-muted">Ingen EAN-varer ennå.</p>
                   )}
                 </article>
               ))
             ) : (
               <p className="rounded-2xl bg-slate-50 p-4 text-sm text-muted">
-                Ingen godkjente grupper ennå.
+                Ingen godkjente overordnede varer ennå.
               </p>
             )}
           </div>

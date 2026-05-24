@@ -58,7 +58,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       : comparableMembers;
 
     if (selectedMembers.length < 2) {
-      return NextResponse.json({ error: "Velg minst to produkter som skal inn i gruppen." }, { status: 400 });
+      return NextResponse.json({ error: "Velg minst to EAN-varer som skal inn i den overordnede varen." }, { status: 400 });
     }
 
     const removedMembers = comparableMembers.filter(

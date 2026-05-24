@@ -73,7 +73,7 @@ export async function POST(request: Request) {
 
     const name = cleanText(body?.name);
     if (!name) {
-      return NextResponse.json({ error: "Gruppenavn mangler" }, { status: 400 });
+      return NextResponse.json({ error: "Navn på overordnet vare mangler" }, { status: 400 });
     }
 
     const supabase = getSupabaseAdmin();
