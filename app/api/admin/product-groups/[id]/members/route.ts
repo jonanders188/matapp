@@ -36,7 +36,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
     const productId = cleanText(body?.product_id);
     if (!productId) {
-      return NextResponse.json({ error: "product_id mangler" }, { status: 400 });
+      return NextResponse.json({ error: "product_id for EAN-vare mangler" }, { status: 400 });
     }
 
     const relationshipType = cleanText(body?.relationship_type) || "same_product_different_package";

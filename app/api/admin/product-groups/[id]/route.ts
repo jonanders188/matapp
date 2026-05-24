@@ -21,55 +21,60 @@ function normalizeComparisonUnit(value: unknown) {
   return text;
 }
 
-export async function GET(request: Request) {
+async function loadGroup(id: string) {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("product_groups")
+    .select(`
+      id,
+      name,
+      brand,
+      category,
+      comparison_unit,
+      description,
+      status,
+      created_at,
+      updated_at,
+      product_group_members (
+        id,
+        product_id,
+        relationship_type,
+        confidence,
+        manually_confirmed,
+        reason,
+        products (
+          id,
+          ean,
+          name,
+          brand,
+          category,
+          package_size,
+          image_url
+        )
+      )
+    `)
+    .eq("id", id)
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     await requireSystemAdmin(request);
-    const supabase = getSupabaseAdmin();
-
-    const { data: groups, error } = await supabase
-      .from("product_groups")
-      .select(`
-        id,
-        name,
-        brand,
-        category,
-        comparison_unit,
-        description,
-        status,
-        created_at,
-        updated_at,
-        product_group_members (
-          id,
-          product_id,
-          relationship_type,
-          confidence,
-          manually_confirmed,
-          products (
-            id,
-            ean,
-            name,
-            brand,
-            category,
-            package_size,
-            image_url
-          )
-        )
-      `)
-      .neq("status", "archived")
-      .order("updated_at", { ascending: false })
-      .order("name", { ascending: true });
-
-    if (error) throw error;
-
-    return NextResponse.json({ groups: groups ?? [] });
+    const { id } = await context.params;
+    const group = await loadGroup(id);
+    return NextResponse.json({ group });
   } catch (error) {
     return systemAdminErrorResponse(error);
   }
 }
 
-export async function POST(request: Request) {
+export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const admin = await requireSystemAdmin(request);
+    await requireSystemAdmin(request);
+    const { id } = await context.params;
     const body = await request.json().catch(() => ({}));
 
     const name = cleanText(body?.name);
@@ -78,23 +83,22 @@ export async function POST(request: Request) {
     }
 
     const supabase = getSupabaseAdmin();
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from("product_groups")
-      .insert({
+      .update({
         name,
         brand: nullableText(body?.brand),
         category: nullableText(body?.category),
         comparison_unit: normalizeComparisonUnit(body?.comparison_unit),
         description: nullableText(body?.description),
-        status: "active",
-        created_by: admin.userId === "00000000-0000-0000-0000-000000000000" ? null : admin.userId
+        updated_at: new Date().toISOString()
       })
-      .select("*")
-      .single();
+      .eq("id", id);
 
     if (error) throw error;
 
-    return NextResponse.json({ group: data }, { status: 201 });
+    const group = await loadGroup(id);
+    return NextResponse.json({ group });
   } catch (error) {
     return systemAdminErrorResponse(error);
   }

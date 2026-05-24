@@ -84,11 +84,8 @@ function explicitProductNetContent(product: UnitPricingProduct) {
   };
 }
 
-export function inferProductNetContent(product: UnitPricingProduct) {
-  const explicit = explicitProductNetContent(product);
-  if (explicit) return { ...explicit, source: "product-fields" as const };
-
-  const text = normalizeSearchText(`${product.package_size ?? ""} ${product.name ?? ""}`);
+function inferProductNetContentFromText(value: unknown) {
+  const text = normalizeSearchText(value);
   if (!text) return null;
 
   const compact = text.replace(/\s+/g, "");
@@ -172,6 +169,23 @@ export function inferProductNetContent(product: UnitPricingProduct) {
       };
     }
   }
+
+  return null;
+}
+
+export function inferProductNetContent(product: UnitPricingProduct) {
+  const explicit = explicitProductNetContent(product);
+  if (explicit) return { ...explicit, source: "product-fields" as const };
+
+  // Product-level package_size is more trusted than free-text product names.
+  // This prevents simple EAN packages such as "1500 ml" from being
+  // reinterpreted as multipacks because a name/OCR/import context contains
+  // misleading "x4" or "x6" text.
+  const packageSizeOnly = inferProductNetContentFromText(product.package_size);
+  if (packageSizeOnly) return packageSizeOnly;
+
+  const nameOnly = inferProductNetContentFromText(product.name);
+  if (nameOnly) return nameOnly;
 
   return null;
 }

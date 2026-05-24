@@ -331,7 +331,7 @@ export default function ProductGroupsAdminPage() {
 
         <section className="grid gap-4 md:grid-cols-3">
           <StatCard title="Overordnede varer" value={String(groups.length)} subtitle="Godkjente overordnede varer" tone="green" />
-          <StatCard title="EAN-varer" value={String(memberCount)} subtitle="EAN-produkter i grupper" tone="amber" />
+          <StatCard title="EAN-varer" value={String(memberCount)} subtitle="EAN-varer i overordnede varer" tone="amber" />
           <StatCard title="AI-forslag" value={String(suggestions.length)} subtitle="Venter på godkjenning" tone="purple" />
         </section>
 
@@ -529,15 +529,20 @@ export default function ProductGroupsAdminPage() {
                 <article key={group.id} className="rounded-2xl border border-line p-4">
                   <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                     <div>
-                      <h3 className="text-lg font-bold">{group.name}</h3>
+                      <a href={`/admin/product-groups/${group.id}`} className="text-lg font-bold text-brand underline-offset-4 hover:underline">{group.name}</a>
                       <p className="text-sm text-muted">
                         {[group.brand, group.category, unitLabel(group.comparison_unit)].filter(Boolean).join(" · ")}
                       </p>
                       {group.description ? <p className="mt-2 text-sm text-slate-700">{group.description}</p> : null}
                     </div>
-                    <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-brand">
-                      {group.product_group_members?.length ?? 0} EAN-varer
-                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-brand">
+                        {group.product_group_members?.length ?? 0} EAN-varer
+                      </span>
+                      <a href={`/admin/product-groups/${group.id}`} className="rounded-xl border border-line px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
+                        Rediger
+                      </a>
+                    </div>
                   </div>
 
                   {group.product_group_members?.length ? (
@@ -556,7 +561,7 @@ export default function ProductGroupsAdminPage() {
                             onClick={() => removeGroupMember(group.id, member.id)}
                             className="rounded-xl border border-line px-3 py-2 text-xs font-bold text-slate-700 hover:bg-white"
                           >
-                            Ta ut
+                            Ta ut EAN-vare
                           </button>
                         </div>
                       ))}

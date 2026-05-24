@@ -47,40 +47,13 @@ type StorePreferenceRow = {
 };
 
 type PriceRow = {
-  id?: string;
   product_id: string;
   store_code: string | null;
   store_name: string | null;
   price: number | string | null;
   unit_price: number | string | null;
-  comparison_unit?: string | null;
-  package_quantity?: number | string | null;
-  package_unit?: string | null;
-  unit_price_source?: string | null;
   observed_at: string | null;
   source: string | null;
-};
-
-type ProductGroupProductRow = {
-  id: string;
-  ean: string | null;
-  name: string | null;
-  brand: string | null;
-  category: string | null;
-  package_size: string | null;
-  image_url: string | null;
-};
-
-type ProductGroupMemberRow = {
-  product_id: string;
-  products?: ProductGroupProductRow | ProductGroupProductRow[] | null;
-};
-
-type ProductGroupRow = {
-  id: string;
-  name: string;
-  comparison_unit: string | null;
-  product_group_members?: ProductGroupMemberRow[] | null;
 };
 
 type DisplayPrice = {
@@ -93,40 +66,8 @@ type DisplayPrice = {
   isFresh: boolean;
 };
 
-type QuickGroupPrice = {
-  productId: string;
-  productName: string;
-  brand: string | null;
-  ean: string | null;
-  packageSize: string | null;
-  storeKey: string;
-  storeName: string;
-  price: number | null;
-  unitPrice: number | null;
-  storedUnitPrice: number | null;
-  unitPriceWasCorrected: boolean;
-  comparisonUnit: string | null;
-  observedAt: string | null;
-  source: string | null;
-  ageDays: number | null;
-  isFresh: boolean;
-  isStale: boolean;
-};
-
-type QuickProductGroup = {
-  id: string;
-  name: string;
-  comparisonUnit: string | null;
-  packageCount: number;
-  scannedPackage: QuickGroupPrice | null;
-  cheapest: QuickGroupPrice | null;
-  priceOptions: QuickGroupPrice[];
-};
-
 const FRESH_PRICE_DAYS = 14;
 const FRESH_PRICE_MS = FRESH_PRICE_DAYS * 24 * 60 * 60 * 1000;
-const GROUP_FRESH_PRICE_DAYS = 30;
-const GROUP_STALE_PRICE_DAYS = 90;
 
 function cleanEan(value: unknown) {
   return String(value ?? "").replace(/\D/g, "").trim();
@@ -164,31 +105,6 @@ function isFreshDate(value: string | null) {
   if (!value) return false;
   const time = Date.parse(value);
   return Number.isFinite(time) && Date.now() - time <= FRESH_PRICE_MS;
-}
-
-function priceAgeDays(value: string | null) {
-  if (!value) return null;
-  const time = Date.parse(value);
-  if (!Number.isFinite(time)) return null;
-  return Math.max(0, Math.floor((Date.now() - time) / (24 * 60 * 60 * 1000)));
-}
-
-function isFreshGroupPrice(value: string | null) {
-  const ageDays = priceAgeDays(value);
-  return ageDays !== null && ageDays <= GROUP_FRESH_PRICE_DAYS;
-}
-
-function isStaleGroupPrice(value: string | null) {
-  const ageDays = priceAgeDays(value);
-  return ageDays === null || ageDays > GROUP_STALE_PRICE_DAYS;
-}
-
-function groupPriceFreshnessRank(value: string | null) {
-  const ageDays = priceAgeDays(value);
-  if (ageDays === null) return 3;
-  if (ageDays <= GROUP_FRESH_PRICE_DAYS) return 0;
-  if (ageDays <= GROUP_STALE_PRICE_DAYS) return 1;
-  return 2;
 }
 
 async function loadActiveStores(householdId: string) {
@@ -354,163 +270,6 @@ function productSummary(product: ProductRow | KassalappProduct | null, ean: stri
     source
   };
 }
-function firstGroupProduct(value: ProductGroupProductRow | ProductGroupProductRow[] | null | undefined) {
-  if (!value) return null;
-  return Array.isArray(value) ? value[0] ?? null : value;
-}
-
-function recomputeGroupUnitPrice(price: number | null, product: ProductGroupProductRow | null, comparisonUnit: string | null) {
-  if (price === null || !product || !comparisonUnit) return null;
-  const inferred = unitPricingColumnsForProduct(
-    {
-      name: product.name,
-      brand: product.brand,
-      category: product.category,
-      package_size: product.package_size,
-      comparison_unit: comparisonUnit
-    },
-    price
-  );
-
-  if (inferred.comparison_unit !== comparisonUnit || inferred.unit_price === null) return null;
-  return inferred.unit_price;
-}
-
-function chooseGroupUnitPrice(storedUnitPrice: number | null, recomputedUnitPrice: number | null) {
-  if (storedUnitPrice !== null && recomputedUnitPrice !== null) {
-    const diffRatio = Math.abs(storedUnitPrice - recomputedUnitPrice) / Math.max(recomputedUnitPrice, 0.01);
-    if (diffRatio > 0.30) return { unitPrice: recomputedUnitPrice, wasCorrected: true };
-    return { unitPrice: storedUnitPrice, wasCorrected: false };
-  }
-
-  if (recomputedUnitPrice !== null) return { unitPrice: recomputedUnitPrice, wasCorrected: false };
-  return { unitPrice: storedUnitPrice, wasCorrected: false };
-}
-
-async function loadProductGroupSummary(productId: string, stores: Awaited<ReturnType<typeof loadActiveStores>>): Promise<QuickProductGroup | null> {
-  const supabase = getSupabaseAdmin();
-  const activeStoreKeys = new Set(stores.map((store) => store.storeKey));
-
-  const { data: memberships, error: membershipError } = await supabase
-    .from("product_group_members")
-    .select("group_id")
-    .eq("product_id", productId)
-    .limit(1);
-
-  if (membershipError) throw membershipError;
-  const groupId = (memberships?.[0] as { group_id?: string } | undefined)?.group_id;
-  if (!groupId) return null;
-
-  const { data: groupData, error: groupError } = await supabase
-    .from("product_groups")
-    .select(`
-      id,
-      name,
-      comparison_unit,
-      product_group_members (
-        product_id,
-        products (
-          id,
-          ean,
-          name,
-          brand,
-          category,
-          package_size,
-          image_url
-        )
-      )
-    `)
-    .eq("id", groupId)
-    .neq("status", "archived")
-    .maybeSingle();
-
-  if (groupError) throw groupError;
-  if (!groupData) return null;
-  const group = groupData as unknown as ProductGroupRow;
-  const productMap = new Map<string, ProductGroupProductRow>();
-  const productIds = (group.product_group_members ?? [])
-    .map((member) => {
-      const memberProductId = String(member.product_id);
-      const memberProduct = firstGroupProduct(member.products);
-      if (memberProduct) productMap.set(memberProductId, memberProduct);
-      return memberProductId;
-    })
-    .filter(Boolean);
-
-  if (!productIds.length) return null;
-
-  const { data: observations, error: observationsError } = await supabase
-    .from("price_observations")
-    .select("id, product_id, store_code, store_name, price, unit_price, comparison_unit, package_quantity, package_unit, unit_price_source, observed_at, source")
-    .in("product_id", productIds)
-    .not("price", "is", null)
-    .order("observed_at", { ascending: false })
-    .limit(500);
-
-  if (observationsError) throw observationsError;
-
-  const latestByProductAndStore = new Map<string, PriceRow>();
-  for (const observation of (observations ?? []) as PriceRow[]) {
-    const identity = canonicalStoreIdentity(observation.store_code, observation.store_name);
-    if (activeStoreKeys.size > 0 && !activeStoreKeys.has(identity.store_code)) continue;
-    const key = `${observation.product_id}:${identity.store_code}`;
-    if (!latestByProductAndStore.has(key)) latestByProductAndStore.set(key, observation);
-  }
-
-  const prices = [...latestByProductAndStore.values()]
-    .map((observation) => {
-      const memberProduct = productMap.get(String(observation.product_id)) ?? null;
-      const identity = canonicalStoreIdentity(observation.store_code, observation.store_name);
-      const price = toNumber(observation.price);
-      const storedUnitPrice = toNumber(observation.unit_price);
-      const comparisonUnit = observation.comparison_unit ?? group.comparison_unit ?? null;
-      const recomputedUnitPrice = recomputeGroupUnitPrice(price, memberProduct, comparisonUnit);
-      const chosen = chooseGroupUnitPrice(storedUnitPrice, recomputedUnitPrice);
-
-      return {
-        productId: String(observation.product_id),
-        productName: memberProduct?.name ?? "Ukjent forpakning",
-        brand: memberProduct?.brand ?? null,
-        ean: memberProduct?.ean ?? null,
-        packageSize: memberProduct?.package_size ?? null,
-        storeKey: identity.store_code,
-        storeName: identity.store_name,
-        price,
-        unitPrice: chosen.unitPrice,
-        storedUnitPrice,
-        unitPriceWasCorrected: chosen.wasCorrected,
-        comparisonUnit,
-        observedAt: observation.observed_at,
-        source: displaySource(observation.source),
-        ageDays: priceAgeDays(observation.observed_at),
-        isFresh: isFreshGroupPrice(observation.observed_at),
-        isStale: isStaleGroupPrice(observation.observed_at)
-      } satisfies QuickGroupPrice;
-    })
-    .filter((price) => price.price !== null && price.unitPrice !== null)
-    .sort((a, b) => {
-      const aFreshness = groupPriceFreshnessRank(a.observedAt);
-      const bFreshness = groupPriceFreshnessRank(b.observedAt);
-      if (aFreshness !== bFreshness) return aFreshness - bFreshness;
-      const aUnit = a.unitPrice ?? Number.POSITIVE_INFINITY;
-      const bUnit = b.unitPrice ?? Number.POSITIVE_INFINITY;
-      if (aUnit !== bUnit) return aUnit - bUnit;
-      const aObserved = a.observedAt ? Date.parse(a.observedAt) : 0;
-      const bObserved = b.observedAt ? Date.parse(b.observedAt) : 0;
-      return bObserved - aObserved;
-    });
-
-  return {
-    id: group.id,
-    name: group.name,
-    comparisonUnit: group.comparison_unit,
-    packageCount: productIds.length,
-    scannedPackage: prices.find((price) => price.productId === productId) ?? null,
-    cheapest: prices[0] ?? null,
-    priceOptions: prices
-  };
-}
-
 
 async function lookupProduct(ean: string, householdId: string) {
   const stores = await loadActiveStores(householdId);
@@ -520,14 +279,12 @@ async function lookupProduct(ean: string, householdId: string) {
   if (existingProduct) {
     const householdProduct = await loadHouseholdProduct(householdId, existingProduct.id);
     const prices = await pricesFromDatabase(existingProduct.id, stores);
-    const productGroup = await loadProductGroupSummary(existingProduct.id, stores);
     return {
       ean,
       product: productSummary(existingProduct, ean, "local"),
       existsLocally: true,
       isBasis: Boolean(householdProduct?.is_basis),
       prices,
-      productGroup,
       kassalappMessage: null as string | null
     };
   }
