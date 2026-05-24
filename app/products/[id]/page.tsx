@@ -237,8 +237,30 @@ function packageDisplay(product: Product, observation?: Pick<Observation, "packa
     return formatQuantity(packageQuantity, packageUnit) ?? `${formatNumberNb(packageQuantity)} ${packageUnit}`;
   }
 
+  const rawPackageSize = toNumeric(product.package_size);
+  if (multipack && rawPackageSize !== null && !hasExplicitUnit(product.package_size)) {
+    return `${formatNumberNb(multipack.singleAmount)} ${multipack.singleUnit} x ${formatNumberNb(multipack.count, 0)} = ${formatNumberNb(multipack.comparisonQuantity)} ${multipack.comparisonUnit}`;
+  }
+
   if (product.package_size) return product.package_size;
   return "Ukjent pakning";
+}
+
+function packageOptionDisplay(option: ProductGroupPriceOption) {
+  const multipack = parseMultipackFromName(option.product_name);
+  const rawPackageSize = toNumeric(option.package_size);
+
+  if (multipack) {
+    return `${formatNumberNb(multipack.singleAmount)} ${multipack.singleUnit} x ${formatNumberNb(multipack.count, 0)} = ${formatNumberNb(multipack.comparisonQuantity)} ${multipack.comparisonUnit}`;
+  }
+
+  if (rawPackageSize !== null && !hasExplicitUnit(option.package_size)) {
+    if (option.comparison_unit === "l") return `${formatNumberNb(rawPackageSize / 1000)} l`;
+    if (option.comparison_unit === "kg") return `${formatNumberNb(rawPackageSize / 1000)} kg`;
+    return `${formatNumberNb(rawPackageSize)} ${unitSuffix(option.comparison_unit)}`;
+  }
+
+  return option.package_size ?? option.product_name;
 }
 
 function unitSuffix(unit: string | null | undefined) {
@@ -512,7 +534,7 @@ export default function ProductRulesPage() {
                         <p className="text-sm font-semibold text-brand">Anbefaling</p>
                         <p className="mt-1 text-lg font-bold">{cheapestGroupPrice.product_name}</p>
                         <p className="mt-1 text-sm text-muted">
-                          {cheapestGroupPrice.package_size ?? "Pakning ukjent"} · {priceSourceLabel(cheapestGroupPrice.source)}
+                          {packageOptionDisplay(cheapestGroupPrice)} · {priceSourceLabel(cheapestGroupPrice.source)}
                         </p>
                         <p className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-semibold ${currentPriceClass(cheapestGroupPrice)}`}>{currentPriceLabel(cheapestGroupPrice)} · {ageText(cheapestGroupPrice.age_days)}</p>
                         {groupSavings ? <p className="mt-2 text-sm font-semibold text-brand">{groupSavings} enn denne forpakningen.</p> : null}
@@ -535,7 +557,7 @@ export default function ProductRulesPage() {
                     <div key={`${option.product_id}:${option.store_code ?? option.store_name}:${option.observed_at ?? index}`} className={`rounded-xl p-3 text-sm ${option.is_scanned_product ? "bg-blue-50" : index === 0 ? "bg-emerald-50" : "bg-slate-50"}`}>
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="truncate font-semibold">{index + 1}. {option.package_size ?? option.product_name}</p>
+                          <p className="truncate font-semibold">{index + 1}. {packageOptionDisplay(option)}</p>
                           <p className="mt-1 truncate text-xs text-muted">{option.store_name} · {priceSourceLabel(option.source)}</p>
                           <p className={`mt-2 inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${currentPriceClass(option)}`}>{currentPriceLabel(option)} · {ageText(option.age_days)}</p>
                           {option.is_scanned_product ? <p className="mt-1 text-xs font-semibold text-blue-700">Denne forpakningen</p> : null}

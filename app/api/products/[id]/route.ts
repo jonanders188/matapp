@@ -311,6 +311,7 @@ async function loadProductGroupSummary(productId: string): Promise<ProductGroupS
         is_scanned_product: String(observation.product_id) === productId
       } satisfies ProductGroupPriceOption;
     })
+    .filter((option) => isCurrentPrice(option.observed_at))
     .filter((option) => option.price !== null && option.unit_price !== null)
     .sort((a, b) => {
       const unitDiff = (a.unit_price ?? Number.POSITIVE_INFINITY) - (b.unit_price ?? Number.POSITIVE_INFINITY);
