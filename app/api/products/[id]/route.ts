@@ -404,6 +404,18 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 
     if (priceResult.error) throw priceResult.error;
 
+    const normalizedPriceObservations = (priceResult.data ?? []).map((observation) => {
+      const unitPricing = unitPricingColumnsForProduct(product, observation.price, observation.unit_price);
+      return {
+        ...observation,
+        unit_price: unitPricing.unit_price,
+        comparison_unit: unitPricing.comparison_unit ?? observation.comparison_unit ?? null,
+        package_quantity: unitPricing.package_quantity ?? observation.package_quantity ?? null,
+        package_unit: unitPricing.package_unit ?? observation.package_unit ?? null,
+        unit_price_source: unitPricing.unit_price_source
+      };
+    });
+
     const correctedObservations = (priceResult.data ?? []).map((observation) => correctedPriceObservation(product, observation));
     const productGroup = await loadProductGroupSummary(id);
 

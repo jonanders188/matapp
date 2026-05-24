@@ -95,7 +95,8 @@ function inferProductNetContentFromText(value: unknown) {
   const multipackPatterns: RegExp[] = [
     /(\d+)\s*(?:pk|pakk|pakke|pakker)\s*(?:a|à|x)?\s*(\d+(?:\.\d+)?)\s*(kg|kilo|kilogram|g|gram|liter|litre|ltr|l|dl|cl|ml)\b/,
     /(\d+)\s*x\s*(\d+(?:\.\d+)?)\s*(kg|kilo|kilogram|g|gram|liter|litre|ltr|l|dl|cl|ml)\b/,
-    /(\d+(?:\.\d+)?)\s*(kg|kilo|kilogram|g|gram|liter|litre|ltr|l|dl|cl|ml)\s*(?:flaske|boks|stk)?\s*(\d+)\s*(?:pk|pakk|pakke|pakker)\b/
+    /(\d+(?:\.\d+)?)\s*(kg|kilo|kilogram|g|gram|liter|litre|ltr|l|dl|cl|ml)\s*(?:flaske|boks|stk)?\s*(\d+)\s*(?:pk|pakk|pakke|pakker)\b/,
+    /(\d+(?:\.\d+)?)\s*(kg|kilo|kilogram|g|gram|liter|litre|ltr|l|dl|cl|ml)\s*x\s*(\d+)\b/,
   ];
 
   for (let index = 0; index < multipackPatterns.length; index += 1) {
@@ -106,7 +107,7 @@ function inferProductNetContentFromText(value: unknown) {
     let amount: number | null = null;
     let unit: string | null = null;
 
-    if (index === 2) {
+    if (index === 2 || index === 3) {
       amount = decimalPatternToNumber(match[1]);
       unit = normalizeUnit(match[2]);
       count = decimalPatternToNumber(match[3]);
@@ -251,6 +252,17 @@ export function computeComparableUnitPrice(product: UnitPricingProduct, packageP
   }
 
   if (!price || price <= 0) {
+    if (fallback && fallback > 0) {
+      return {
+        unit_price: roundPrice(fallback),
+        comparison_unit: preferredComparisonUnit ?? inferred?.comparison_unit ?? null,
+        package_quantity: inferred?.package_quantity ?? null,
+        package_unit: inferred?.package_unit ?? null,
+        unit_price_source: "kassalapp",
+        reason: "Brukte enhetspris fra priskilde fordi pakkepris manglet."
+      };
+    }
+
     return {
       unit_price: null,
       comparison_unit: preferredComparisonUnit,
