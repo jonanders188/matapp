@@ -4,6 +4,7 @@ import {
   Database,
   PackageSearch,
   Settings,
+  ShieldCheck,
   Smartphone,
   Tags
 } from "lucide-react";
@@ -38,7 +39,8 @@ const navSections: { title: string; items: NavItem[] }[] = [
   {
     title: "Oppsett",
     items: [
-      { label: "Admin", href: "/admin", icon: Settings, aliases: ["Innstillinger", "Oppsett", "Integrasjoner"], description: "Husholdning og butikker" }
+      { label: "Admin", href: "/admin", icon: Settings, aliases: ["Innstillinger", "Oppsett", "Integrasjoner"], description: "Husholdning og butikker" },
+      { label: "Systemadmin", href: "/admin/product-groups", icon: ShieldCheck, aliases: ["Produktgrupper", "System Admin"], description: "Globale produktgrupper" }
     ]
   }
 ];

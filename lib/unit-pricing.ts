@@ -31,7 +31,7 @@ function normalizeUnit(value: string) {
   const unit = value.trim().toLowerCase();
   if (["kg", "kilo", "kilogram"].includes(unit)) return "kg";
   if (["g", "gram"].includes(unit)) return "g";
-  if (["l", "liter", "litre"].includes(unit)) return "l";
+  if (["l", "liter", "litre", "ltr"].includes(unit)) return "l";
   if (["dl"].includes(unit)) return "dl";
   if (["cl"].includes(unit)) return "cl";
   if (["ml"].includes(unit)) return "ml";
@@ -49,6 +49,11 @@ function amountInComparisonUnit(amount: number, unit: string) {
   if (normalized === "ml") return { quantity: amount / 1000, unit: "l" };
   if (normalized === "stk") return { quantity: amount, unit: "stk" };
   return null;
+}
+
+function decimalPatternToNumber(value: string) {
+  const number = Number(String(value).replace(",", "."));
+  return Number.isFinite(number) ? number : null;
 }
 
 function normalizeSearchText(value: unknown) {
@@ -87,6 +92,46 @@ export function inferProductNetContent(product: UnitPricingProduct) {
   if (!text) return null;
 
   const compact = text.replace(/\s+/g, "");
+
+  // Multipacks must win over single package size:
+  // "6pk 1.5l", "6 x 1,5l", "10x0,33l" should compare on total liters.
+  const multipackPatterns: RegExp[] = [
+    /(\d+)\s*(?:pk|pakk|pakke|pakker)\s*(?:a|à|x)?\s*(\d+(?:\.\d+)?)\s*(kg|kilo|kilogram|g|gram|liter|litre|ltr|l|dl|cl|ml)\b/,
+    /(\d+)\s*x\s*(\d+(?:\.\d+)?)\s*(kg|kilo|kilogram|g|gram|liter|litre|ltr|l|dl|cl|ml)\b/,
+    /(\d+(?:\.\d+)?)\s*(kg|kilo|kilogram|g|gram|liter|litre|ltr|l|dl|cl|ml)\s*(?:flaske|boks|stk)?\s*(\d+)\s*(?:pk|pakk|pakke|pakker)\b/
+  ];
+
+  for (let index = 0; index < multipackPatterns.length; index += 1) {
+    const match = text.match(multipackPatterns[index]) ?? compact.match(multipackPatterns[index]);
+    if (!match) continue;
+
+    let count: number | null = null;
+    let amount: number | null = null;
+    let unit: string | null = null;
+
+    if (index === 2) {
+      amount = decimalPatternToNumber(match[1]);
+      unit = normalizeUnit(match[2]);
+      count = decimalPatternToNumber(match[3]);
+    } else {
+      count = decimalPatternToNumber(match[1]);
+      amount = decimalPatternToNumber(match[2]);
+      unit = normalizeUnit(match[3]);
+    }
+
+    if (!count || count <= 1 || !amount || amount <= 0 || !unit) continue;
+
+    const converted = amountInComparisonUnit(amount * count, unit);
+    if (converted && converted.quantity > 0) {
+      return {
+        package_quantity: amount * count,
+        package_unit: unit,
+        comparison_quantity: converted.quantity,
+        comparison_unit: converted.unit,
+        source: "parsed-package" as const
+      };
+    }
+  }
 
   const weightOrVolumeMatch =
     compact.match(/(\d+(?:\.\d+)?)(kg|kilo|kilogram|g|gram|liter|litre|l|dl|cl|ml)\b/) ??
