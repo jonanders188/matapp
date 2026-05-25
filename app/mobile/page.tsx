@@ -212,10 +212,10 @@ function sourceBadge(product: QuickProduct | null) {
 
 function phaseTitle(phase: ScanPhase) {
   if (phase === "scanned") return "EAN lest";
-  if (phase === "loading") return "Henter vare og priser";
+  if (phase === "loading") return "Henter nåpris";
   if (phase === "found") return "Vare funnet";
   if (phase === "not_found") return "Vare ikke funnet";
-  if (phase === "saving") return "Lagrer pris";
+  if (phase === "saving") return "Delr pris";
   if (phase === "saved") return "Pris lagret";
   if (phase === "error") return "Noe stoppet";
   if (phase === "ready") return "Klar til skanning";
@@ -243,7 +243,7 @@ export default function MobileScanPage() {
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("Velg butikk før du starter skanning.");
+  const [message, setMessage] = useState("Velg butikk. Skann produkt. Del pris.");
   const [phase, setPhase] = useState<ScanPhase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [currentEan, setCurrentEan] = useState("");
@@ -342,7 +342,7 @@ export default function MobileScanPage() {
     setManualPrice(bestPrice.numericPrice.toFixed(2).replace(".", ","));
 
     const storeName = bestPrice.storeName ?? selectedStore?.storeName ?? selectedStoreKey;
-    setMessage(`Fant eksisterende butikkpris hos ${storeName}: ${kr(bestPrice.numericPrice)}. Kontroller og trykk Lagre.`);
+    setMessage(`Fant eksisterende butikkpris hos ${storeName}: ${kr(bestPrice.numericPrice)}. Kontroller og trykk Del.`);
   }, [lookup, selectedStoreKey, selectedStore?.storeName]);
 
 
@@ -366,7 +366,7 @@ export default function MobileScanPage() {
       try {
         setMessage(
           attempt === 1
-            ? `EAN ${ean} lest. Henter vare og priser...`
+            ? `EAN ${ean} lest. Henter nåpris...`
             : `Fant ikke varen ennå. Prøver igjen ${attempt}/${PRODUCT_LOOKUP_MAX_ATTEMPTS}...`
         );
 
@@ -423,7 +423,7 @@ export default function MobileScanPage() {
     setCurrentEan(ean);
     setLookup(null);
     setManualPrice("");
-    setMessage(`EAN ${ean} lest. Henter vare og priser...`);
+    setMessage(`EAN ${ean} lest. Henter nåpris...`);
     window.setTimeout(() => setPhase("loading"), 120);
 
     try {
@@ -477,7 +477,7 @@ export default function MobileScanPage() {
     setBusy(true);
     setPhase("saving");
     setError(null);
-    setMessage(`Lagrer ${price.toFixed(2)} kr hos ${selectedStore.storeName}...`);
+    setMessage(`Delr ${price.toFixed(2)} kr hos ${selectedStore.storeName}...`);
 
     try {
       const response = await authFetch("/api/mobile/quick-price", {
@@ -505,7 +505,7 @@ export default function MobileScanPage() {
       setCurrentEan(data.ean);
       beep("success");
       setPhase("saved");
-      setMessage(`Lagret ${price.toFixed(2)} kr hos ${selectedStore.storeName}. Hopper tilbake til EAN-skanning...`);
+      setMessage(`Delt ${price.toFixed(2)} kr hos ${selectedStore.storeName}. Hopper tilbake til EAN-skanning...`);
       window.setTimeout(() => nextProduct(), 650);
     } catch (saveError) {
       beep("error");
@@ -586,7 +586,7 @@ export default function MobileScanPage() {
     setError(null);
     setCameraPaused(false);
     setPhase(selectedStore ? "ready" : "idle");
-    setMessage(selectedStore ? `Du er i ${selectedStore.storeName}. Skann en vare.` : "Velg butikk før du starter skanning.");
+    setMessage(selectedStore ? `Du er i ${selectedStore.storeName}. Skann en vare.` : "Velg butikk. Skann produkt. Del pris.");
   }, [selectedStoreKey]);
 
   useEffect(() => {
@@ -616,7 +616,7 @@ export default function MobileScanPage() {
       streamRef.current = null;
       setCameraReady(false);
       setCameraPaused(true);
-      setMessage("Kameraet er pauset etter 1 minutt. Trykk Skann neste produkt for å fortsette.");
+      setMessage("Kameraet er pauset etter 1 minutt. Trykk Skann neste for å fortsette.");
     }, 60_000);
 
     return () => window.clearTimeout(timer);
@@ -667,7 +667,7 @@ export default function MobileScanPage() {
     setError(null);
     setBusy(false);
     setPhase(selectedStore ? "ready" : "idle");
-    setMessage(selectedStore ? "Klar for neste vare." : "Velg butikk før du starter skanning.");
+    setMessage(selectedStore ? "Klar for neste vare." : "Velg butikk. Skann produkt. Del pris.");
     lastScanRef.current = { ean: "", at: 0 };
 
     window.setTimeout(() => {
@@ -689,7 +689,7 @@ export default function MobileScanPage() {
                     <label htmlFor="active-store" className="shrink-0 text-xs font-black uppercase tracking-[0.18em] text-slate-500">
                       Aktiv butikk
                     </label>
-                    <p className="mt-1 text-sm font-bold text-slate-500">Velg butikk og del faktiske hyllepriser på basisvarer.</p>
+                    <p className="mt-1 text-sm font-bold text-slate-500">Velg butikk, skann produktet og del faktisk butikkpris.</p>
                   </div>
                   <Link href="/dashboard" className="rounded-full bg-slate-100 px-3 py-2 text-xs font-black text-slate-700">
                     Dashboard
@@ -721,14 +721,14 @@ export default function MobileScanPage() {
               {!selectedStore ? (
                 <div className="absolute inset-x-5 bottom-6 rounded-3xl bg-slate-950/80 p-4 text-center backdrop-blur">
                   <p className="text-lg font-black">Velg butikk i menyen over kameraet</p>
-                  <p className="mt-1 text-sm font-bold text-slate-300">Når butikken er valgt, starter EAN-skanning automatisk.</p>
+                  <p className="mt-1 text-sm font-bold text-slate-300">Når butikken er valgt, starter strekkodeskanning automatisk.</p>
                 </div>
               ) : null}
 
               {cameraPaused && selectedStore ? (
                 <div className="absolute inset-0 flex items-center justify-center bg-slate-950/75 p-6 text-center">
                   <button type="button" onClick={nextProduct} className="rounded-3xl bg-emerald-300 px-6 py-5 text-xl font-black text-slate-950">
-                    Skann neste produkt
+                    Skann neste
                   </button>
                 </div>
               ) : null}
@@ -775,7 +775,7 @@ export default function MobileScanPage() {
                     Dashboard
                   </Link>
                   <button type="button" onClick={nextProduct} className="rounded-3xl bg-slate-950 px-5 py-4 text-sm font-black text-white">
-                    Neste produkt
+                    Neste
                   </button>
                 </div>
               </div>
@@ -806,7 +806,7 @@ export default function MobileScanPage() {
                   <div className="h-24 w-24 rounded-3xl bg-slate-100" />
                 )}
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Produkt skannet</p>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Vare skannet</p>
                   <h2 className="mt-2 text-[1.9rem] font-black leading-tight">{lookup.product?.name ?? lookup.ean}</h2>
                   <p className="mt-1 text-sm text-slate-500">{lookup.product?.brand ?? "Ukjent merke"} · EAN {lookup.ean}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -832,7 +832,7 @@ export default function MobileScanPage() {
                         Sist kjent her: {kr(selectedStorePrice.price)} · {formatDate(selectedStorePrice.observedAt)}
                       </p>
                     ) : (
-                      <p className="mt-2 text-sm font-bold text-slate-500">Ingen kjent pris for denne butikken. Skriv butikkprisen og del den.</p>
+                      <p className="mt-2 text-sm font-bold text-slate-500">Ingen kjent pris her. Skriv butikkprisen og del den med fellesskapet.</p>
                     )}
                   </div>
                   {selectedStorePrice?.price ? <p className="text-3xl font-black text-emerald-700">{kr(selectedStorePrice.price)}</p> : null}
@@ -882,7 +882,7 @@ export default function MobileScanPage() {
                     className="mt-3 w-full rounded-3xl border-2 border-slate-200 px-4 py-5 text-4xl font-black text-slate-950 outline-none focus:border-emerald-500"
                   />
                   <p className="mt-2 text-sm font-semibold text-slate-500">
-                    Er butikkprisen lik sist kjent pris, trykk Lagre. Er den annerledes, skriv ny pris først.
+                    Er butikkprisen lik sist kjent pris, trykk Del. Er den annerledes, skriv ny pris først.
                   </p>
                 </div>
 
@@ -892,7 +892,7 @@ export default function MobileScanPage() {
                   disabled={busy || !lookup.product || !parsePrice(manualPrice) || (productIsUnsaved && saveMode === "none")}
                   className="mt-4 w-full rounded-3xl bg-emerald-700 px-4 py-5 text-xl font-black text-white disabled:opacity-50"
                 >
-                  Lagre {parsePrice(manualPrice) ? kr(parsePrice(manualPrice)) : "pris"} hos {selectedStore?.storeName}
+                  Del {parsePrice(manualPrice) ? kr(parsePrice(manualPrice)) : "pris"} hos {selectedStore?.storeName}
                 </button>
                 {productIsUnsaved && saveMode === "none" ? <p className="mt-3 text-sm font-semibold text-slate-500">Ikke lagre brukes bare for å se priser. Prisen kan ikke lagres uten produkt.</p> : null}
               </section>
@@ -1052,7 +1052,7 @@ export default function MobileScanPage() {
             ) : null}
 
             <button type="button" onClick={nextProduct} className="sticky bottom-4 z-20 order-[100] w-full rounded-3xl bg-white px-5 py-5 text-xl font-black text-slate-950 shadow-xl shadow-black/30">
-              Skann neste produkt
+              Skann neste
             </button>
           </div>
         ) : null}

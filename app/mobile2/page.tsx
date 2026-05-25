@@ -202,7 +202,7 @@ function modeText(mode: ScanMode) {
 }
 
 function mobileModeText(mode: MobileMode) {
-  if (mode === "receipt") return "Kvittering";
+  if (mode === "receipt") return "Skann kvittering";
   return modeText(mode);
 }
 
@@ -803,14 +803,14 @@ export default function MobileScanPage() {
   const lastReceiptAnalysisAtRef = useRef(0);
   const lastScanRef = useRef<{ ean: string; at: number }>({ ean: "", at: 0 });
 
-  const [mode, setMode] = useState<MobileMode>("in");
+  const [mode, setMode] = useState<MobileMode>("receipt");
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraPaused, setCameraPaused] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [manualEan, setManualEan] = useState("");
   const [lastResult, setLastResult] = useState<ScanResponse["data"] | null>(null);
-  const [message, setMessage] = useState("Velg modus og pek kameraet mot strekkoden.");
+  const [message, setMessage] = useState("Ta bilde av kvittering eller last opp bilde. Matmakt finner prisene som kan deles.");
   const [error, setError] = useState<string | null>(null);
   const [receiptText, setReceiptText] = useState("");
   const [receiptAiLines, setReceiptAiLines] = useState<ReceiptLine[] | null>(null);
@@ -877,7 +877,7 @@ export default function MobileScanPage() {
     setReceiptDetected(false);
     setReceiptCandidateScore(0);
     setError(null);
-    setMessage(`${cache.lines.length} kvitteringslinjer lagret i 1 time. Skann EAN på varene for å koble prisene.`);
+    setMessage(`${cache.lines.length} kvitteringslinjer er klare. Skann strekkode på varene som ikke ble matchet automatisk.`);
   }
 
   function clearReceiptCache() {
@@ -886,7 +886,7 @@ export default function MobileScanPage() {
     setReceiptImportPreview(null);
     setReceiptImportImageBase64(null);
     setReceiptImportStoreKey("");
-    setMessage("Midlertidig kvittering er tømt.");
+    setMessage("Kvitteringen er tømt.");
   }
 
   function markReceiptLineUsed(lineId: string, productName: string) {
@@ -943,7 +943,7 @@ export default function MobileScanPage() {
       setStoreDetectionMessage(
         preview.needsStoreConfirmation
           ? preview.reason ?? "Velg registrert butikk før import."
-          : `AI valgte registrert butikk: ${preview.storeName ?? preview.storeKey}.`
+          : `Matmakt foreslår butikk: ${preview.storeName ?? preview.storeKey}.`
       );
       setReceiptText("");
       setReceiptAiLines(null);
@@ -955,12 +955,12 @@ export default function MobileScanPage() {
       setError(null);
 
       if (preview.needsStoreConfirmation) {
-        setMessage(`AI leste ${preview.linesRead} linjer, men butikken må bekreftes før import.`);
+        setMessage(`Matmakt fant ${preview.linesRead} linjer. Velg butikk før prisene deles.`);
       } else {
         const secure = preview.secureMatches?.length ?? 0;
         const review = preview.reviewMatches?.length ?? 0;
         const unmatched = preview.unmatchedLines?.length ?? 0;
-        setMessage(`AI leste ${preview.linesRead} linjer. ${secure} sikre basisvarer, ${review} må kontrolleres, ${unmatched} ikke matchet. Importer sikre matcher eller avbryt.`);
+        setMessage(`Matmakt fant ${preview.linesRead} linjer. ${secure} priser kan deles nå, ${review} bør sjekkes, ${unmatched} ble ikke matchet.`);
       }
 
       beep(true);
@@ -969,7 +969,7 @@ export default function MobileScanPage() {
       const message = error instanceof Error ? error.message : "AI klarte ikke å lese kvitteringen.";
       setOcrStatus(null);
       setError(message);
-      setMessage("Kvitteringen ble ikke lagret. Prøv et tydeligere bilde, eller sjekk at butikken er registrert.");
+      setMessage("Kvitteringen ble ikke lest. Prøv et tydeligere bilde, eller sjekk at butikken er registrert.");
       setReceiptImportPreview(null);
       setReceiptImportImageBase64(null);
       setReceiptImportStoreKey("");
@@ -1067,7 +1067,7 @@ export default function MobileScanPage() {
     setReceiptAiLines(null);
     setOcrStatus(null);
     setError(null);
-    setMessage("Kvitteringsimport er avbrutt. Ingen priser ble lagret.");
+    setMessage("Importen er avbrutt. Ingen priser ble delt.");
   }
 
   async function captureReceiptFromCamera() {
@@ -1217,7 +1217,7 @@ export default function MobileScanPage() {
 
     setBusy(true);
     setError(null);
-    setMessage(`Fant ${ean}. Oppdaterer lager...`);
+    setMessage(`Fant ${ean}. Oppdaterer...`);
 
     try {
       const response = await authFetch("/api/mobile/scan", {
@@ -1263,7 +1263,7 @@ export default function MobileScanPage() {
         markReceiptLineUsed(receiptMatch.lineId, payload.data.product.name);
         const quantityText = ` (${formatReceiptQuantity(receiptMatch.quantity, receiptMatch.quantityUnit ?? "stk")})`;
         const warningText = receiptMatch.warning ? ` ${receiptMatch.warning}` : "";
-        setMessage(`Piip! Pris fra kvittering matchet: ${formatReceiptPrice(receiptMatch.unitPrice)} kr/stk${quantityText}.${warningText}`);
+        setMessage(`Pris fra kvittering delt: ${formatReceiptPrice(receiptMatch.unitPrice)} kr/stk${quantityText}.${warningText}`);
       } else {
         setMessage(selectedMode === "in" ? "Piip! Lagt inn på lager." : "Piip! Tatt ut av lager.");
       }
@@ -1319,7 +1319,7 @@ export default function MobileScanPage() {
       setCameraReady(true);
 
       if (!window.BarcodeDetector) {
-        setCameraError("Denne nettleseren støtter ikke strekkodeskanning direkte. Kvitteringsmodus virker fortsatt, og EAN kan legges inn manuelt.");
+        setCameraError("Denne nettleseren støtter ikke strekkodeskanning direkte. Kvittering kan fortsatt lastes opp som bilde.");
       }
     } catch (cameraErrorValue) {
       setCameraError(cameraErrorValue instanceof Error ? cameraErrorValue.message : "Fikk ikke startet kameraet");
@@ -1352,7 +1352,7 @@ export default function MobileScanPage() {
     const timer = window.setTimeout(() => {
       stopCamera();
       setCameraPaused(true);
-      setMessage("Kameraet er pauset etter 1 minutt. Trykk Skann neste vare for å fortsette.");
+      setMessage("Kameraet er pauset. Trykk fortsett når du er klar.");
     }, 60_000);
 
     return () => window.clearTimeout(timer);
@@ -1382,7 +1382,7 @@ export default function MobileScanPage() {
             if (analysis.isReceipt && !receiptConfirmedRef.current) {
               receiptConfirmedRef.current = true;
               beep(true);
-              setMessage("Kvittering gjenkjent. Hold stille og trykk ‘Ta bilde og les’. ");
+              setMessage("Kvittering funnet. Hold stille og trykk ‘Ta bilde’. ");
             } else if (!analysis.isReceipt && receiptConfirmedRef.current && analysis.score < 42) {
               receiptConfirmedRef.current = false;
             }
@@ -1429,8 +1429,9 @@ export default function MobileScanPage() {
       <div className="mx-auto flex min-h-screen max-w-xl flex-col px-4 py-5">
         <header className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-300">Mobil lager</p>
-            <h1 className="text-3xl font-black">Piip varer</h1>
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-300">Matmakt</p>
+            <h1 className="text-3xl font-black">Skann kvittering</h1>
+            <p className="mt-1 text-sm font-semibold text-slate-300">Del mange butikkpriser på én gang.</p>
           </div>
           <a href="/dashboard" className="rounded-full bg-white/10 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/15">
             Dashboard
@@ -1439,12 +1440,21 @@ export default function MobileScanPage() {
 
         <section className="mt-5 grid grid-cols-3 gap-2 rounded-3xl bg-white/8 p-2 ring-1 ring-white/10">
           <button
+            onClick={() => setMode("receipt")}
+            className={`rounded-2xl px-3 py-4 text-left transition ${mode === "receipt" ? "bg-sky-300 text-slate-950" : "bg-white/5 text-white"}`}
+          >
+            <span className="block text-3xl">▤</span>
+            <span className="mt-2 block text-base font-black">Kvittering</span>
+            <span className="text-xs opacity-80">Del priser</span>
+          </button>
+
+          <button
             onClick={() => setMode("in")}
             className={`rounded-2xl px-3 py-4 text-left transition ${mode === "in" ? "bg-emerald-400 text-slate-950" : "bg-white/5 text-white"}`}
           >
             <span className="block text-3xl">+</span>
             <span className="mt-2 block text-base font-black">Inn</span>
-            <span className="text-xs opacity-80">Øk lager</span>
+            <span className="text-xs opacity-80">Lager</span>
           </button>
 
           <button
@@ -1453,18 +1463,14 @@ export default function MobileScanPage() {
           >
             <span className="block text-3xl">−</span>
             <span className="mt-2 block text-base font-black">Ut</span>
-            <span className="text-xs opacity-80">Reduser</span>
+            <span className="text-xs opacity-80">Brukt</span>
           </button>
 
-          <button
-            onClick={() => setMode("receipt")}
-            className={`rounded-2xl px-3 py-4 text-left transition ${mode === "receipt" ? "bg-sky-300 text-slate-950" : "bg-white/5 text-white"}`}
-          >
-            <span className="block text-3xl">⌁</span>
-            <span className="mt-2 block text-base font-black">Kvittering</span>
-            <span className="text-xs opacity-80">Prisbuffer</span>
-          </button>
+        </section>
 
+        <section className="mt-4 rounded-3xl bg-white/8 p-4 text-sm font-semibold leading-6 text-slate-200 ring-1 ring-white/10">
+          <p className="text-base font-black text-white">Slik bidrar du enklest</p>
+          <p className="mt-1">Ta bilde av kvitteringen. Matmakt finner basisvarene, foreslår butikk og deler bare prisene som virker trygge.</p>
         </section>
 
         <section className="relative mt-5 overflow-hidden rounded-3xl bg-black ring-1 ring-white/10">
@@ -1498,7 +1504,7 @@ export default function MobileScanPage() {
           ) : null}
           {busy || receiptProcessing ? (
             <div className="absolute inset-0 grid place-items-center bg-slate-950/70 px-6 text-center text-xl font-black">
-              {receiptProcessing ? ocrStatus ?? "Leser kvittering..." : "Oppdaterer lager..."}
+              {receiptProcessing ? ocrStatus ?? "Leser kvittering..." : "Oppdaterer..."}
             </div>
           ) : null}
         </section>
@@ -1510,10 +1516,10 @@ export default function MobileScanPage() {
               disabled={!cameraReady || receiptProcessing}
               className="rounded-2xl bg-sky-300 px-4 py-4 text-base font-black text-slate-950 disabled:opacity-50"
             >
-              Ta bilde og les
+              Ta bilde
             </button>
             <label className="rounded-2xl bg-white/10 px-4 py-4 text-center text-base font-black text-white ring-1 ring-white/15">
-              Last opp fil
+              Last opp bilde
               <input
                 type="file"
                 accept="image/*"
@@ -1543,7 +1549,7 @@ export default function MobileScanPage() {
           <section className="mt-4 rounded-3xl bg-emerald-300 p-4 text-slate-950 shadow-2xl">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.18em] opacity-70">Kvittering klar for import</p>
+                <p className="text-sm font-semibold uppercase tracking-[0.18em] opacity-70">Priser funnet</p>
                 <p className="mt-1 text-xl font-black">
                   {receiptImportPreview.needsStoreConfirmation ? "Velg butikk" : receiptImportPreview.storeName ?? "Butikk valgt"}
                   {receiptImportPreview.receiptDate ? ` · ${receiptImportPreview.receiptDate}` : ""}
@@ -1554,7 +1560,7 @@ export default function MobileScanPage() {
                 {receiptImportPreview.reason ? <p className="mt-1 text-xs font-bold opacity-75">{receiptImportPreview.reason}</p> : null}
               </div>
               <button onClick={cancelReceiptImport} className="rounded-full bg-slate-950 px-4 py-2 text-sm font-black text-white">
-                Avbryt import
+                Avbryt
               </button>
             </div>
 
@@ -1576,15 +1582,15 @@ export default function MobileScanPage() {
 
             <div className="mt-3 grid gap-3 md:grid-cols-3">
               <div className="rounded-2xl bg-white/60 p-3">
-                <p className="text-xs font-black uppercase tracking-wide opacity-70">Importeres automatisk</p>
+                <p className="text-xs font-black uppercase tracking-wide opacity-70">Kan deles nå</p>
                 <p className="mt-1 text-3xl font-black">{receiptImportPreview.secureMatches?.length ?? 0}</p>
               </div>
               <div className="rounded-2xl bg-white/60 p-3">
-                <p className="text-xs font-black uppercase tracking-wide opacity-70">Trenger kontroll</p>
+                <p className="text-xs font-black uppercase tracking-wide opacity-70">Bør sjekkes</p>
                 <p className="mt-1 text-3xl font-black">{receiptImportPreview.reviewMatches?.length ?? 0}</p>
               </div>
               <div className="rounded-2xl bg-white/60 p-3">
-                <p className="text-xs font-black uppercase tracking-wide opacity-70">Til manuell skanning</p>
+                <p className="text-xs font-black uppercase tracking-wide opacity-70">Ikke matchet</p>
                 <p className="mt-1 text-3xl font-black">{receiptImportPreview.remainingLines?.length ?? 0}</p>
               </div>
             </div>
@@ -1604,7 +1610,7 @@ export default function MobileScanPage() {
               {(receiptImportPreview.secureMatches?.length ?? 0) > 8 ? (
                 <p className="text-xs font-bold opacity-70">Viser 8 av {receiptImportPreview.secureMatches?.length} sikre matcher.</p>
               ) : null}
-              {!(receiptImportPreview.secureMatches?.length ?? 0) ? <p className="text-sm font-bold opacity-70">Ingen sikre basisvarer funnet. Du kan fortsatt legge linjene til manuell skanning.</p> : null}
+              {!(receiptImportPreview.secureMatches?.length ?? 0) ? <p className="text-sm font-bold opacity-70">Ingen trygge treff funnet. Du kan fortsatt skanne strekkoder for varene etterpå.</p> : null}
             </div>
 
             <button
@@ -1612,7 +1618,7 @@ export default function MobileScanPage() {
               disabled={receiptProcessing || (receiptImportPreview.needsStoreConfirmation && !receiptImportStoreKey)}
               className="mt-3 w-full rounded-2xl bg-slate-950 px-4 py-4 text-base font-black text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Importer sikre matcher
+              Del trygge priser
             </button>
           </section>
         ) : null}
@@ -1621,10 +1627,10 @@ export default function MobileScanPage() {
           <section className="mt-4 rounded-3xl bg-sky-300 p-4 text-slate-950 shadow-2xl">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.18em] opacity-70">Aktiv kvittering</p>
+                <p className="text-sm font-semibold uppercase tracking-[0.18em] opacity-70">Kvittering som må kobles</p>
                 <p className="mt-1 text-xl font-black">{receiptCache.storeName} · {activeReceiptLines.length} linjer igjen</p>
                 <p className="mt-1 text-sm font-semibold opacity-80">Utløper om ca. {receiptMinutesLeft} min.</p>
-                <p className="mt-1 text-xs font-bold opacity-70">Viser alle ubrukte kvitteringslinjer.</p>
+                <p className="mt-1 text-xs font-bold opacity-70">Skann strekkoden på linjene som ikke ble matchet automatisk.</p>
               </div>
               <button onClick={clearReceiptCache} className="rounded-full bg-slate-950 px-4 py-2 text-sm font-black text-white">
                 Tøm

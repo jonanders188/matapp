@@ -23,17 +23,17 @@ const navSections: { title: string; items: NavItem[] }[] = [
   {
     title: "Daglig bruk",
     items: [
-      { label: "Lager", href: "/inventory", icon: Box, aliases: ["Inventory"], description: "Hva dere har" },
-      { label: "Prisoversikt", href: "/prices", icon: Tags, aliases: ["Priser", "Prissammenligning"], description: "Beste kjøp nå" },
-      { label: "Kvittering", href: "/mobile2", icon: Smartphone, aliases: ["Mobile2", "Mobil lager"], description: "Skann kvittering" },
-      { label: "Skann produkt", href: "/mobile", icon: Smartphone, aliases: ["Mobile", "Mobil butikk"], description: "Skann produkt og del pris" }
+      { label: "Lager", href: "/inventory", icon: Box, aliases: ["Inventory"], description: "Beholdning hjemme" },
+      { label: "Prisoversikt", href: "/prices", icon: Tags, aliases: ["Priser", "Prissammenligning"], description: "Nåpris på basisvarer" },
+      { label: "Skann kvittering", href: "/mobile2", icon: Smartphone, aliases: ["Kvittering", "Mobile2", "Mobil lager"], description: "Del mange priser på én gang" },
+      { label: "Skann produkt", href: "/mobile", icon: Smartphone, aliases: ["Mobile", "Mobil butikk"], description: "Del én pris raskt" }
     ]
   },
   {
     title: "Varer",
     items: [
-      { label: "Basisvarer", href: "/products", icon: PackageSearch, aliases: ["Basisutvalg", "Produkter"], description: "Varene som betyr noe" },
-      { label: "Legg til varer", href: "/catalog", icon: Database, aliases: ["Produktregister", "Katalog"], description: "Finn og legg til varer" }
+      { label: "Basisvarer", href: "/products", icon: PackageSearch, aliases: ["Basisutvalg", "Produkter"], description: "Ditt faste vareutvalg" },
+      { label: "Legg til varer", href: "/catalog", icon: Database, aliases: ["Produktregister", "Katalog"], description: "Finn flere varer" }
     ]
   },
   {
@@ -46,9 +46,9 @@ const navSections: { title: string; items: NavItem[] }[] = [
 ];
 
 const quickActions = [
-  { label: "Lager", href: "/inventory" },
-  { label: "Kvittering", href: "/mobile2" },
-  { label: "Legg til basisvare", href: "/catalog" }
+  { label: "Skann produkt", href: "/mobile" },
+  { label: "Skann kvittering", href: "/mobile2" },
+  { label: "Mine basisvarer", href: "/products" }
 ] as const;
 
 function isActive(item: NavItem, active: string) {

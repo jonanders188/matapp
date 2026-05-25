@@ -136,27 +136,27 @@ export default function ProductsPage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold">Basisvarer</h1>
-          <p className="mt-1 text-muted">Dette er husholdningens faste varer. Lager, målpris og basisprissynk styres her.</p>
+          <p className="mt-1 text-muted">Dette er varene Matmakt skal bry seg om for din husholdning. Hold listen kort og relevant.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Link href="/catalog" className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-            Legg til vare
+            Legg til basisvare
           </Link>
           <button
             onClick={syncBasisPrices}
             disabled={Boolean(actionLoading) || !products.length}
             className="rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
           >
-            {actionLoading === "sync" ? "Synker..." : "Synk basispriser"}
+            {actionLoading === "sync" ? "Synker..." : "Hent nåpriser"}
           </button>
         </div>
       </div>
 
       <div className="mt-6 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard title="Basisvarer" value={String(products.length)} subtitle="Aktive produkter" />
-        <StatCard title="Med prisdata" value={String(productsWithPrices)} subtitle="Har observasjoner" tone="blue" />
-        <StatCard title="Ønsket behov" value={String(desiredTotal)} subtitle="Sum ønsket lager" tone="amber" />
-        <StatCard title="Sist synk" value={shortDate(latestSync)} subtitle="Fra prisobservasjoner" />
+        <StatCard title="Basisvarer" value={String(products.length)} subtitle="Varer dere følger" />
+        <StatCard title="Med prisdata" value={String(productsWithPrices)} subtitle="Har delte priser" tone="blue" />
+        <StatCard title="Ønsket behov" value={String(desiredTotal)} subtitle="Planlagt behov" tone="amber" />
+        <StatCard title="Sist synk" value={shortDate(latestSync)} subtitle="Siste aktuelle pris" />
       </div>
 
       {message ? <p className="mt-5 rounded-xl bg-emerald-50 p-3 text-sm text-brand">{message}</p> : null}
@@ -165,8 +165,8 @@ export default function ProductsPage() {
       <section className="card mt-6 overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line p-4">
           <div>
-            <h2 className="text-lg font-semibold">Basisvarene dine</h2>
-            <p className="text-sm text-muted">Sorter, rediger og rydd i varene husholdningen faktisk følger opp.</p>
+            <h2 className="text-lg font-semibold">Dine basisvarer</h2>
+            <p className="text-sm text-muted">Hold dette enkelt: bare varene som faktisk påvirker handlevalgene deres.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <input
@@ -256,7 +256,7 @@ export default function ProductsPage() {
               {!loading && !filteredProducts.length ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-10 text-center text-muted">
-                    Ingen basisvarer funnet. Legg til varene husholdningen faktisk bruker.
+                    Ingen basisvarer funnet. Legg til basisvarene husholdningen faktisk bruker.
                   </td>
                 </tr>
               ) : null}

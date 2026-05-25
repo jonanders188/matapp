@@ -97,15 +97,33 @@ export default function DashboardPage() {
     <AppShell active="Priser">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="page-heading">Matmakt for din husholdning</h1>
-          <p className="page-subtitle">Følg basisvarene som betyr noe, del faktiske priser og se beste kjøp nå.</p>
+          <h1 className="page-heading">Hva vil du gjøre nå?</h1>
+          <p className="page-subtitle">Start med én kvittering, ett produkt eller basisvarene dere faktisk bruker.</p>
         </div>
         <button onClick={loadBasisPrices} className="rounded-xl border border-line px-4 py-2 text-sm font-medium text-brand">
-          Oppdater priser
+          Oppdater nåpriser
         </button>
       </div>
 
       {error ? <div className="mt-6 rounded-2xl bg-rose-50 p-4 text-rose-700">{error}</div> : null}
+
+      <section className="mt-6 grid gap-3 lg:grid-cols-3">
+        <Link href="/mobile" className="rounded-3xl border border-emerald-100 bg-emerald-700 p-5 text-white shadow-sm transition hover:bg-emerald-800">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-100">Raskeste bidrag</p>
+          <h2 className="mt-2 text-2xl font-black">Skann produkt</h2>
+          <p className="mt-2 text-sm font-semibold text-emerald-50">Velg butikk, skann strekkoden og del butikkprisen.</p>
+        </Link>
+        <Link href="/mobile2" className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:bg-slate-50">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Mange priser</p>
+          <h2 className="mt-2 text-2xl font-black text-slate-950">Skann kvittering</h2>
+          <p className="mt-2 text-sm font-semibold text-slate-600">Importer flere faktiske priser fra én handel.</p>
+        </Link>
+        <Link href="/products" className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:bg-slate-50">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Ditt fokus</p>
+          <h2 className="mt-2 text-2xl font-black text-slate-950">Velg basisvarer</h2>
+          <p className="mt-2 text-sm font-semibold text-slate-600">Følg bare varene husholdningen faktisk bryr seg om.</p>
+        </Link>
+      </section>
 
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 xl:gap-5">
         <StatCard title="Beste butikk nå" value={data.bestStore?.store ?? "-"} subtitle={data.bestStore ? `${kr(data.bestStore.total)} · ${data.bestStore.coveragePct}% dekning` : "Ingen priser ennå"} />
