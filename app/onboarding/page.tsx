@@ -168,6 +168,10 @@ export default function OnboardingPage() {
   }
 
   useEffect(() => {
+    const householdId = new URLSearchParams(window.location.search).get("household_id");
+    if (householdId) {
+      window.localStorage.setItem("matmakt.activeHouseholdId", householdId);
+    }
     loadHousehold().catch(() => undefined);
   }, []);
 

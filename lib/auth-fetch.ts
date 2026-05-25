@@ -12,6 +12,13 @@ export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}
     headers.set("Authorization", `Bearer ${data.session.access_token}`);
   }
 
+  if (typeof window !== "undefined") {
+    const activeHouseholdId = window.localStorage.getItem("matmakt.activeHouseholdId");
+    if (activeHouseholdId) {
+      headers.set("x-matmakt-household-id", activeHouseholdId);
+    }
+  }
+
   if (!headers.has("Cache-Control")) {
     headers.set("Cache-Control", "no-cache");
   }

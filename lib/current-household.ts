@@ -36,6 +36,18 @@ function readBearerToken(request: Request) {
   return match?.[1]?.trim() ?? null;
 }
 
+function requestedHouseholdId(request: Request) {
+  const fromHeader = request.headers.get("x-matmakt-household-id")?.trim();
+  if (fromHeader) return fromHeader;
+
+  try {
+    const url = new URL(request.url);
+    return url.searchParams.get("household_id")?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 function authError(message: string, status: number) {
   return Object.assign(new Error(message), { status });
 }
@@ -103,11 +115,19 @@ export async function requireAuthenticatedUser(request: Request): Promise<Authen
 export async function requireCurrentHousehold(request: Request): Promise<CurrentHousehold> {
   const user = await requireAuthenticatedUser(request);
   const supabase = getSupabaseAdmin();
+  const selectedHouseholdId = requestedHouseholdId(request);
 
-  const { data: memberships, error: membershipError } = await supabase
+  let query = supabase
     .from("household_members")
     .select("household_id, role")
-    .eq("user_id", user.userId)
+    .eq("user_id", user.userId);
+
+  if (selectedHouseholdId) {
+    query = query.eq("household_id", selectedHouseholdId);
+  }
+
+  const { data: memberships, error: membershipError } = await query
+    .order("created_at", { ascending: true })
     .limit(1);
 
   if (membershipError) {
@@ -117,7 +137,12 @@ export async function requireCurrentHousehold(request: Request): Promise<Current
   const membership = memberships?.[0];
 
   if (!membership?.household_id) {
-    throw authError("Brukeren er ikke medlem av en husholdning", 403);
+    throw authError(
+      selectedHouseholdId
+        ? "Du er ikke medlem av den valgte husholdningen"
+        : "Brukeren er ikke medlem av en husholdning",
+      403
+    );
   }
 
   return {

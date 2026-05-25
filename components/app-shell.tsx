@@ -16,11 +16,20 @@ import { cx } from "@/lib/utils";
 import { AuthStatus } from "@/components/auth-status";
 import { authFetch } from "@/lib/auth-fetch";
 
+type HouseholdSummary = {
+  id: string;
+  name: string;
+  role: "admin" | "member";
+  display_name: string | null;
+};
+
 type AccessState = {
   loading: boolean;
   canUseApp: boolean;
   canManageHousehold: boolean;
   canAccessSystemAdmin: boolean;
+  activeHousehold: HouseholdSummary | null;
+  households: HouseholdSummary[];
 };
 
 type NavAudience = "member" | "household-admin" | "system-admin";
@@ -67,6 +76,17 @@ const quickActions = [
   { label: "Kom i gang", href: "/onboarding" }
 ] as const;
 
+function emptyAccess(): AccessState {
+  return {
+    loading: true,
+    canUseApp: false,
+    canManageHousehold: false,
+    canAccessSystemAdmin: false,
+    activeHousehold: null,
+    households: []
+  };
+}
+
 function isActive(item: NavItem, active: string) {
   return item.label === active || item.aliases?.includes(active);
 }
@@ -85,6 +105,10 @@ function activeRequiresSystemAdmin(active: string) {
   return ["Systemadmin", "Produktgrupper", "System Admin"].includes(active);
 }
 
+function roleLabel(role: HouseholdSummary["role"] | null | undefined) {
+  return role === "admin" ? "Eier/admin" : "Medlem";
+}
+
 function AccessDenied({ title, message }: { title: string; message: string }) {
   return (
     <section className="rounded-3xl border border-amber-200 bg-amber-50 p-6 text-amber-950">
@@ -99,12 +123,7 @@ function AccessDenied({ title, message }: { title: string; message: string }) {
 }
 
 export function AppShell({ active, children }: { active: string; children: React.ReactNode }) {
-  const [access, setAccess] = useState<AccessState>({
-    loading: true,
-    canUseApp: false,
-    canManageHousehold: false,
-    canAccessSystemAdmin: false
-  });
+  const [access, setAccess] = useState<AccessState>(emptyAccess);
 
   useEffect(() => {
     let cancelled = false;
@@ -112,21 +131,34 @@ export function AppShell({ active, children }: { active: string; children: React
     authFetch("/api/me/access")
       .then(async (response) => {
         const payload = await response.json().catch(() => null) as {
-          data?: { capabilities?: { canUseApp?: boolean; canManageHousehold?: boolean; canAccessSystemAdmin?: boolean } };
+          data?: {
+            household?: HouseholdSummary | null;
+            households?: HouseholdSummary[];
+            capabilities?: { canUseApp?: boolean; canManageHousehold?: boolean; canAccessSystemAdmin?: boolean };
+          };
         } | null;
 
         if (cancelled) return;
+
+        const activeHousehold = payload?.data?.household ?? null;
+        const households = payload?.data?.households ?? [];
+
+        if (activeHousehold && typeof window !== "undefined") {
+          window.localStorage.setItem("matmakt.activeHouseholdId", activeHousehold.id);
+        }
 
         setAccess({
           loading: false,
           canUseApp: Boolean(payload?.data?.capabilities?.canUseApp),
           canManageHousehold: Boolean(payload?.data?.capabilities?.canManageHousehold),
-          canAccessSystemAdmin: Boolean(payload?.data?.capabilities?.canAccessSystemAdmin)
+          canAccessSystemAdmin: Boolean(payload?.data?.capabilities?.canAccessSystemAdmin),
+          activeHousehold,
+          households
         });
       })
       .catch(() => {
         if (!cancelled) {
-          setAccess({ loading: false, canUseApp: false, canManageHousehold: false, canAccessSystemAdmin: false });
+          setAccess({ ...emptyAccess(), loading: false });
         }
       });
 
@@ -134,6 +166,12 @@ export function AppShell({ active, children }: { active: string; children: React
       cancelled = true;
     };
   }, []);
+
+  function switchHousehold(householdId: string) {
+    if (!householdId || householdId === access.activeHousehold?.id) return;
+    window.localStorage.setItem("matmakt.activeHouseholdId", householdId);
+    window.location.reload();
+  }
 
   const visibleSections = useMemo(
     () => navSections
@@ -194,9 +232,34 @@ export function AppShell({ active, children }: { active: string; children: React
 
         <section className="min-w-0 flex-1 bg-slate-50/40">
           <header className="flex min-h-20 flex-col gap-3 border-b border-line bg-white px-4 py-4 sm:flex-row sm:items-center sm:justify-between lg:px-8">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted">Damgata 21D</p>
-              <p className="text-lg font-bold text-slate-900">{active}</p>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">Aktiv husholdning</p>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                {access.households.length > 1 ? (
+                  <select
+                    value={access.activeHousehold?.id ?? ""}
+                    onChange={(event) => switchHousehold(event.target.value)}
+                    className="max-w-full rounded-2xl border border-line bg-white px-3 py-2 text-sm font-black text-slate-900 outline-none focus:border-emerald-500"
+                    aria-label="Bytt husholdning"
+                  >
+                    {access.households.map((household) => (
+                      <option key={household.id} value={household.id}>
+                        {household.name} · {roleLabel(household.role)}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="truncate text-sm font-black text-slate-900 sm:text-base">
+                    {access.activeHousehold?.name ?? (access.loading ? "Laster husholdning..." : "Ingen husholdning")}
+                  </p>
+                )}
+                {access.activeHousehold ? (
+                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-black text-emerald-700 ring-1 ring-emerald-100">
+                    {roleLabel(access.activeHousehold.role)}
+                  </span>
+                ) : null}
+              </div>
+              <p className="mt-1 text-lg font-bold text-slate-900">{active}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {quickActions.map((action) => (

@@ -62,15 +62,16 @@ async function findUserByEmail(email: string) {
   return null;
 }
 
-async function inviteOrFindUser(email: string, request: Request) {
+async function inviteOrFindUser(email: string, request: Request, householdId: string) {
   const supabase = getSupabaseAdmin();
   const existing = await findUserByEmail(email);
   if (existing) return { user: existing, invited: false };
 
   const { data, error } = await supabase.auth.admin.inviteUserByEmail(email, {
-    redirectTo: `${appOrigin(request)}/onboarding`,
+    redirectTo: `${appOrigin(request)}/onboarding?household_id=${encodeURIComponent(householdId)}`,
     data: {
-      invited_from: "matmakt_household"
+      invited_from: "matmakt_household",
+      household_id: householdId
     }
   });
 
@@ -94,7 +95,7 @@ export async function POST(request: Request) {
     const role = parseRole(body.role);
     const displayName = String(body.display_name ?? "").trim() || displayNameFromEmail(email);
     const supabase = getSupabaseAdmin();
-    const { user, invited } = await inviteOrFindUser(email, request);
+    const { user, invited } = await inviteOrFindUser(email, request, current.householdId);
     await allowInvitedEmailInClosedBeta(email, current.userId);
 
     const { data, error } = await supabase
@@ -120,7 +121,7 @@ export async function POST(request: Request) {
         invited,
         message: invited
           ? "Invitasjon er sendt på e-post. Personen blir medlem når de logger inn."
-          : "Medlemmet finnes allerede og er lagt til husholdningen. Be personen logge inn med samme e-post."
+          : "Medlemmet finnes allerede og er lagt til denne husholdningen. Be personen logge inn og velge riktig husholdning hvis de har flere."
       }
     });
   } catch (error) {
