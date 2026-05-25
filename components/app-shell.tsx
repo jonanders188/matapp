@@ -24,16 +24,16 @@ const navSections: { title: string; items: NavItem[] }[] = [
     title: "Daglig bruk",
     items: [
       { label: "Lager", href: "/inventory", icon: Box, aliases: ["Inventory"], description: "Hva dere har" },
-      { label: "Priser", href: "/prices", icon: Tags, aliases: ["Prissammenligning"], description: "Billigste butikk" },
-      { label: "Skann hjemme", href: "/mobile2", icon: Smartphone, aliases: ["Mobile2", "Mobil lager"], description: "Inn, ut og kvittering" },
-      { label: "Skann i butikk", href: "/mobile", icon: Smartphone, aliases: ["Mobile", "Mobil butikk"], description: "Oppdater butikkpris" }
+      { label: "Prisoversikt", href: "/prices", icon: Tags, aliases: ["Priser", "Prissammenligning"], description: "Beste kjøp nå" },
+      { label: "Kvittering", href: "/mobile2", icon: Smartphone, aliases: ["Mobile2", "Mobil lager"], description: "Skann kvittering" },
+      { label: "Skann produkt", href: "/mobile", icon: Smartphone, aliases: ["Mobile", "Mobil butikk"], description: "Skann produkt og del pris" }
     ]
   },
   {
     title: "Varer",
     items: [
-      { label: "Basisvarer", href: "/products", icon: PackageSearch, aliases: ["Basisutvalg", "Produkter"], description: "Faste husholdningsvarer" },
-      { label: "Legg til varer", href: "/catalog", icon: Database, aliases: ["Produktregister", "Katalog"], description: "Søk i produktregister" }
+      { label: "Basisvarer", href: "/products", icon: PackageSearch, aliases: ["Basisutvalg", "Produkter"], description: "Varene som betyr noe" },
+      { label: "Legg til varer", href: "/catalog", icon: Database, aliases: ["Produktregister", "Katalog"], description: "Finn og legg til varer" }
     ]
   },
   {
@@ -47,8 +47,8 @@ const navSections: { title: string; items: NavItem[] }[] = [
 
 const quickActions = [
   { label: "Lager", href: "/inventory" },
-  { label: "Skann hjemme", href: "/mobile2" },
-  { label: "Legg til vare", href: "/catalog" }
+  { label: "Kvittering", href: "/mobile2" },
+  { label: "Legg til basisvare", href: "/catalog" }
 ] as const;
 
 function isActive(item: NavItem, active: string) {
@@ -61,8 +61,13 @@ export function AppShell({ active, children }: { active: string; children: React
       <div className="mx-auto flex min-h-[calc(100vh-1rem)] max-w-[1500px] flex-col overflow-hidden rounded-3xl border border-line bg-white shadow-soft sm:min-h-[calc(100vh-2rem)] lg:flex-row">
         <aside className="shrink-0 border-b border-line bg-white p-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:w-64 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:p-5">
           <Link href="/prices" className="mb-4 flex items-center gap-3 text-xl font-bold text-brand lg:mb-8">
-            <span className="grid h-10 w-10 place-items-center rounded-2xl bg-brand-soft">🛒</span>
-            <span>Husholdning</span>
+            <span className="grid h-12 w-12 place-items-center overflow-hidden rounded-2xl bg-white ring-1 ring-emerald-100">
+              <img src="/brand/matmakt-mark.svg" alt="" className="h-10 w-10" />
+            </span>
+            <span>
+              <span className="block text-slate-950">Matmakt</span>
+              <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">Basisvarer</span>
+            </span>
           </Link>
 
           <nav className="space-y-4 lg:space-y-5">

@@ -165,7 +165,7 @@ export default function ProductsPage() {
       <section className="card mt-6 overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line p-4">
           <div>
-            <h2 className="text-lg font-semibold">Faste basisvarer</h2>
+            <h2 className="text-lg font-semibold">Basisvarene dine</h2>
             <p className="text-sm text-muted">Sorter, rediger og rydd i varene husholdningen faktisk følger opp.</p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -256,7 +256,7 @@ export default function ProductsPage() {
               {!loading && !filteredProducts.length ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-10 text-center text-muted">
-                    Ingen basisvarer funnet. Gå til Produktregister for å legge til varer.
+                    Ingen basisvarer funnet. Legg til varene husholdningen faktisk bruker.
                   </td>
                 </tr>
               ) : null}

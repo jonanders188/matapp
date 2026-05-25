@@ -261,13 +261,16 @@ async function loadProductGroupSummary(productId: string): Promise<ProductGroupS
 
   if (!productIds.length) return null;
 
+  const currentPriceCutoff = new Date(Date.now() - CURRENT_PRICE_YELLOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
   const { data: observations, error: observationError } = await supabase
     .from("price_observations")
     .select("id, product_id, store_code, store_name, price, unit_price, comparison_unit, package_quantity, package_unit, observed_at, source, source_url")
     .in("product_id", productIds)
     .not("price", "is", null)
+    .gte("observed_at", currentPriceCutoff)
     .order("observed_at", { ascending: false })
-    .limit(500);
+    .limit(200);
 
   if (observationError) throw observationError;
 
@@ -400,7 +403,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       .select("id, store_code, store_name, price, unit_price, comparison_unit, package_quantity, package_unit, observed_at, source, source_url")
       .eq("product_id", id)
       .order("observed_at", { ascending: false })
-      .limit(80);
+      .limit(20);
 
     if (priceResult.error) throw priceResult.error;
 

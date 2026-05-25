@@ -1,6 +1,8 @@
-# Husholdningspilot MVP
+# Matmakt
 
-En Next.js + Vercel + Supabase starter for en husholdningsapp som optimaliserer handling, lager, fryser, priser og anbefalinger.
+Felles prisdata for smartere husholdninger. Skann produkter og kvitteringer for å bidra til et forbrukerdrevet prisnettverk på basisvarer.
+
+Matmakt er et forbrukerdrevet prisnettverk for basisvarer. Husholdninger deler faktiske butikkpriser og får bedre beslutninger tilbake basert på pris, lager og egne prioriteringer.
 
 ## Inneholder
 

@@ -91,14 +91,14 @@ export default function DashboardPage() {
   const completeStoreCount = data.stores.filter((store) => store.missingProducts === 0).length;
   const comparedSubtitle = data.productCount
     ? `${data.pricedProductCount} av ${data.productCount} basisvarer har pris`
-    : "Importer produkter for å bygge basisutvalg";
+    : "Start med basisvarene husholdningen faktisk bruker";
 
   return (
     <AppShell active="Priser">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="page-heading">Priser</h1>
-          <p className="page-subtitle">Prissammenligning og handleinnsikt basert på basisutvalget til husholdningen.</p>
+          <h1 className="page-heading">Matmakt for din husholdning</h1>
+          <p className="page-subtitle">Følg basisvarene som betyr noe, del faktiske priser og se beste kjøp nå.</p>
         </div>
         <button onClick={loadBasisPrices} className="rounded-xl border border-line px-4 py-2 text-sm font-medium text-brand">
           Oppdater priser
@@ -108,17 +108,17 @@ export default function DashboardPage() {
       {error ? <div className="mt-6 rounded-2xl bg-rose-50 p-4 text-rose-700">{error}</div> : null}
 
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 xl:gap-5">
-        <StatCard title="Billigste basisbutikk" value={data.bestStore?.store ?? "-"} subtitle={data.bestStore ? `${kr(data.bestStore.total)} · ${data.bestStore.coveragePct}% dekning` : "Ingen priser ennå"} />
-        <StatCard title="Mulig besparelse" value={kr(data.potentialSaving)} subtitle="Mot dyreste sammenlignbare butikk" tone="blue" />
-        <StatCard title="Basisvarer sammenlignet" value={`${data.pricedProductCount}/${data.productCount}`} subtitle={comparedSubtitle} tone="amber" />
+        <StatCard title="Beste butikk nå" value={data.bestStore?.store ?? "-"} subtitle={data.bestStore ? `${kr(data.bestStore.total)} · ${data.bestStore.coveragePct}% dekning` : "Ingen priser ennå"} />
+        <StatCard title="Mulig å spare" value={kr(data.potentialSaving)} subtitle="Mot dyreste sammenlignbare butikk" tone="blue" />
+        <StatCard title="Basisvarer med pris" value={`${data.pricedProductCount}/${data.productCount}`} subtitle={comparedSubtitle} tone="amber" />
         <StatCard title="Varer å fylle på" value={String(lowStockCount)} subtitle="Lavere enn ønsket lager" tone="purple" />
       </div>
 
       <section className="card mt-6 overflow-hidden">
         <div className="flex items-center justify-between border-b border-line p-5">
           <div>
-            <h2 className="section-title">Prissammenligning på basisutvalget</h2>
-            <p className="text-sm leading-6 text-muted">Alle produkter i basisutvalget sammenlignes mot siste lagrede pris per butikk.</p>
+            <h2 className="section-title">Beste kjøp på basisvarene</h2>
+            <p className="text-sm leading-6 text-muted">Bare husholdningens basisvarer brukes her. Historikk ligger i databasen, men nåvisningen fokuserer på aktuelle priser.</p>
           </div>
           <Link href="/products" className="text-sm font-medium text-brand">Administrer basisutvalg</Link>
         </div>
@@ -127,7 +127,7 @@ export default function DashboardPage() {
 
         {!loading && data.productCount === 0 ? (
           <div className="p-10 text-center text-muted">
-            Ingen basisvarer ennå. Importer eller lagre produkter på <Link href="/products" className="font-semibold text-brand">Produkter</Link>, så vises prissammenligningen her.
+            Ingen basisvarer ennå. Legg til varer fra <Link href="/products" className="font-semibold text-brand">Produkter</Link>, så vises prissammenligningen her.
           </div>
         ) : null}
 
@@ -190,7 +190,7 @@ export default function DashboardPage() {
         <section className="card p-5">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h2 className="section-title">Beste butikker for basisutvalget</h2>
+              <h2 className="section-title">Butikker for basisvarene</h2>
               <p className="text-sm leading-6 text-muted">Dekning viser hvor mange basisvarer butikken har pris på.</p>
             </div>
             <span className="pill bg-brand-soft text-brand">{completeStoreCount} komplette</span>

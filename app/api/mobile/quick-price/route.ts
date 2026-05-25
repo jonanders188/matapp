@@ -155,7 +155,7 @@ function displaySource(source: string | null) {
   if (!source) return null;
   if (source.startsWith("kassalapp")) return "Kassalapp API";
   if (source === "receipt-scan") return "Kvittering";
-  if (source === "shelf-edge" || source === "mobile-scan") return "Hyllekant";
+  if (source === "shelf-edge" || source === "mobile-scan") return "Skannet pris";
   if (source === "manual") return "Manuelt";
   return source;
 }
@@ -288,7 +288,7 @@ async function pricesFromDatabase(productId: string, stores: Awaited<ReturnType<
     .eq("product_id", productId)
     .gte("observed_at", earliest)
     .order("observed_at", { ascending: false })
-    .limit(1000);
+    .limit(200);
 
   if (error) throw error;
 
@@ -444,13 +444,16 @@ async function loadProductGroupSummary(productId: string, stores: Awaited<Return
 
   if (!productIds.length) return null;
 
+  const groupPriceCutoff = new Date(Date.now() - GROUP_USABLE_PRICE_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
   const { data: observations, error: observationsError } = await supabase
     .from("price_observations")
     .select("id, product_id, store_code, store_name, price, unit_price, comparison_unit, package_quantity, package_unit, unit_price_source, observed_at, source")
     .in("product_id", productIds)
     .not("price", "is", null)
+    .gte("observed_at", groupPriceCutoff)
     .order("observed_at", { ascending: false })
-    .limit(500);
+    .limit(200);
 
   if (observationsError) throw observationsError;
 

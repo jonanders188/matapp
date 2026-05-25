@@ -113,7 +113,7 @@ function priceSourceLabel(source?: string | null) {
 
   if (!normalized) return "Ukjent kilde";
   if (normalized.includes("receipt")) return "Kvittering";
-  if (normalized.includes("shelf")) return "Hyllekant";
+  if (normalized.includes("shelf")) return "Skannet pris";
   if (normalized.includes("manual")) return "Manuelt";
   if (normalized.includes("kassalapp")) return "Kassalapp API";
   if (normalized.includes("mobile-scan")) return "Kassalapp API";
@@ -321,182 +321,234 @@ export default function ProductRulesPage() {
 
   return (
     <AppShell active="Basisvarer">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <Link href="/products" className="text-sm font-semibold text-brand">← Tilbake til produkter</Link>
-          <h1 className="mt-3 text-3xl font-bold">Produktvedlikehold</h1>
-          <p className="mt-1 max-w-3xl text-muted">Rett produktdata, pakning og prisgrunnlag. Siden er laget for nåsituasjon og feilretting, ikke historikk.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link href={`/products/${productId}/assessment`} className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-brand hover:bg-emerald-100">
-            AI-vurdering
+      <div className="mx-auto max-w-6xl space-y-4 pb-24 md:space-y-6 md:pb-10">
+        <div className="flex items-center justify-between gap-3">
+          <Link href="/products" className="rounded-full bg-white px-4 py-2 text-sm font-bold text-brand shadow-sm ring-1 ring-line">
+            ← Produkter
           </Link>
-          <button onClick={syncProduct} disabled={syncing || loading} className="rounded-xl border border-line bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60">
-            {syncing ? "Synker..." : "Synk priser"}
-          </button>
-          <button onClick={save} disabled={saving || loading} className="rounded-xl bg-brand px-5 py-2 text-sm font-semibold text-white disabled:opacity-60">
-            {saving ? "Lagrer..." : "Lagre endringer"}
-          </button>
+          <div className="flex items-center gap-2">
+            <Link href={`/products/${productId}/assessment`} className="hidden rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-bold text-brand md:inline-flex">
+              AI-vurdering
+            </Link>
+            <button onClick={save} disabled={saving || loading} className="rounded-full bg-brand px-5 py-2 text-sm font-bold text-white disabled:opacity-60">
+              {saving ? "Lagrer..." : "Lagre"}
+            </button>
+          </div>
         </div>
-      </div>
 
-      {message ? <p className="mt-5 rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-brand">{message}</p> : null}
-      {error ? <p className="mt-5 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p> : null}
-      {loading ? <div className="card mt-6 p-10 text-center text-muted">Henter produkt...</div> : null}
+        {message ? <p className="rounded-2xl bg-emerald-50 p-3 text-sm font-bold text-brand">{message}</p> : null}
+        {error ? <p className="rounded-2xl bg-rose-50 p-3 text-sm font-bold text-rose-700">{error}</p> : null}
+        {loading ? <div className="card p-10 text-center text-muted">Henter produkt...</div> : null}
 
-      {data ? (
-        <div className="mt-6 grid grid-cols-[360px_1fr] gap-6">
-          <aside className="space-y-5">
-            <section className="card overflow-hidden p-0">
-              <div className="grid h-64 place-items-center bg-white p-5">
-                {data.product.image_url ? <img src={data.product.image_url} alt="" className="h-full w-full object-contain" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : <span className="text-6xl">🛒</span>}
-              </div>
-              <div className="border-t border-line p-5">
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted">Forpakning / EAN-vare</p>
-                <h2 className="mt-2 text-2xl font-bold leading-tight">{data.product.name}</h2>
-                <p className="mt-2 text-sm text-muted">{data.product.brand ?? "Ukjent merke"} · EAN {data.product.ean ?? "mangler"}</p>
-                <div className="mt-4 rounded-2xl border border-line bg-slate-50 p-4">
-                  <p className="text-xs font-bold uppercase tracking-[0.15em] text-muted">Pakning</p>
-                  <p className="mt-1 text-xl font-bold">{packageLabel(data.product, latest)}</p>
-                  <p className="mt-1 text-xs text-muted">Redigeres under Produktdata hvis feil.</p>
+        {data ? (
+          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_360px] md:items-start md:gap-6">
+            <main className="space-y-4 md:space-y-6">
+              <section className="card overflow-hidden p-0">
+                <div className="grid grid-cols-[96px_1fr] gap-4 p-4 md:grid-cols-[150px_1fr] md:gap-6 md:p-6">
+                  <div className="grid h-24 w-24 place-items-center rounded-3xl bg-white p-2 ring-1 ring-line md:h-36 md:w-36">
+                    {data.product.image_url ? (
+                      <img src={data.product.image_url} alt="" className="h-full w-full object-contain" onError={(event) => { event.currentTarget.style.display = "none"; }} />
+                    ) : (
+                      <span className="text-4xl md:text-6xl">🛒</span>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-brand">Forpakning / EAN-vare</p>
+                    <h1 className="mt-2 text-2xl font-black leading-tight text-slate-950 md:text-4xl">{data.product.name}</h1>
+                    <p className="mt-2 text-sm font-semibold text-muted">{data.product.brand ?? "Ukjent merke"} · EAN {data.product.ean ?? "mangler"}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-700">{packageLabel(data.product, latest)}</span>
+                      {data.product.category ? <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-700">{data.product.category}</span> : null}
+                      {data.product.is_basis ? <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-brand">Basisvare</span> : <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-black text-amber-800">Ikke basis</span>}
+                    </div>
+                  </div>
                 </div>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {data.product.is_basis ? <span className="pill bg-emerald-50 text-brand">Basisvare</span> : <span className="pill bg-slate-100 text-muted">Ikke basis</span>}
-                  {data.product.category ? <span className="pill bg-slate-50 text-muted">{data.product.category}</span> : null}
-                  {data.product.is_freezable ? <span className="pill bg-sky-50 text-sky-700">Kan fryses</span> : null}
+              </section>
+
+              <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <div className="rounded-3xl border border-emerald-100 bg-emerald-50 p-4 md:p-5">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">Pris nå</p>
+                  <p className="mt-3 text-3xl font-black text-slate-950 md:text-4xl">{kr(latest?.price ?? null)}</p>
+                  <p className="mt-1 text-xs font-bold text-slate-600">{latest ? `${latest.store_name} · ${priceSourceLabel(latest.source)}` : "Ingen pris"}</p>
                 </div>
-              </div>
-            </section>
-
-            <section className="card p-5">
-              <h2 className="text-lg font-semibold">Må sjekkes</h2>
-              {issues.length ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {issues.map((issue) => <span key={issue} className="rounded-full bg-amber-50 px-3 py-1 text-sm font-semibold text-amber-800">{issue}</span>)}
+                <div className="rounded-3xl border border-violet-100 bg-violet-50 p-4 md:p-5">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-violet-700">Enhetspris</p>
+                  <p className="mt-3 break-words text-3xl font-black text-slate-950 md:text-4xl">{unitPriceLabel(latest?.unit_price ?? null, latest?.comparison_unit ?? null)}</p>
+                  <p className="mt-1 text-xs font-bold text-slate-600">{packageLabel(data.product, latest)}</p>
                 </div>
-              ) : <p className="mt-2 text-sm text-muted">Ingen åpenbare datamangler.</p>}
-            </section>
-          </aside>
+                <div className="rounded-3xl border border-amber-100 bg-amber-50 p-4 md:p-5">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-amber-800">Målpris</p>
+                  <p className="mt-3 text-3xl font-black text-slate-950 md:text-4xl">{kr(data.product.target_price)}</p>
+                  <p className="mt-1 text-xs font-bold text-slate-600">{data.product.target_price_unit === "unit_price" ? "Per kg/l/enhet" : "Per pakke"}</p>
+                </div>
+                <div className={`rounded-3xl border p-4 md:p-5 ${stockTotal < desiredTotal ? "border-rose-100 bg-rose-50" : "border-emerald-100 bg-emerald-50"}`}>
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-700">Lager</p>
+                  <p className="mt-3 text-3xl font-black text-slate-950 md:text-4xl">{stockTotal} / {desiredTotal}</p>
+                  <p className="mt-1 text-xs font-bold text-slate-600">Faktisk / ønsket</p>
+                </div>
+              </section>
 
-          <main className="space-y-5">
-            <section className="grid grid-cols-4 gap-4">
-              <div className="rounded-3xl border border-emerald-100 bg-emerald-50 p-5">
-                <p className="text-sm font-semibold text-slate-700">Pris nå</p>
-                <p className="mt-4 text-4xl font-bold text-slate-950">{kr(latest?.price ?? null)}</p>
-                <p className="mt-2 text-sm font-semibold text-muted">{latest ? `${latest.store_name} · ${priceSourceLabel(latest.source)}` : "Ingen pris"}</p>
-                {latest ? <span className={`mt-4 inline-flex rounded-full px-3 py-1 text-sm font-bold ${freshnessClass(latest.observed_at)}`}>{freshnessLabel(latest.observed_at)}</span> : null}
-              </div>
-              <div className="rounded-3xl border border-violet-100 bg-violet-50 p-5">
-                <p className="text-sm font-semibold text-slate-700">Enhetspris</p>
-                <p className="mt-4 break-words text-4xl font-bold text-slate-950">{unitPriceLabel(latest?.unit_price ?? null, latest?.comparison_unit ?? null)}</p>
-                <p className="mt-2 text-sm font-semibold text-muted">{packageLabel(data.product, latest)}</p>
-              </div>
-              <div className="rounded-3xl border border-amber-100 bg-amber-50 p-5">
-                <p className="text-sm font-semibold text-slate-700">Målpris</p>
-                <p className="mt-4 text-4xl font-bold text-slate-950">{kr(data.product.target_price)}</p>
-                <p className="mt-2 text-sm font-semibold text-muted">{data.product.target_price_unit === "unit_price" ? "Per kg/l/enhet" : "Per stk/pakke"}</p>
-              </div>
-              <div className={`rounded-3xl border p-5 ${stockTotal < desiredTotal ? "border-rose-100 bg-rose-50" : "border-emerald-100 bg-emerald-50"}`}>
-                <p className="text-sm font-semibold text-slate-700">Lager</p>
-                <p className="mt-4 text-4xl font-bold text-slate-950">{stockTotal} / {desiredTotal}</p>
-                <p className="mt-2 text-sm font-semibold text-muted">Faktisk / ønsket</p>
-              </div>
-            </section>
+              <section className="card p-4 md:p-6">
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-brand">Neste handling</p>
+                    <h2 className="mt-1 text-2xl font-black">Oppdater pris eller rett data</h2>
+                    <p className="mt-1 text-sm text-muted">Mobil først: gjør det viktigste raskt, uten å åpne store skjema.</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap">
+                    <button type="button" onClick={() => latest ? editPriceObservation(latest) : setError("Ingen prisobservasjon å oppdatere ennå. Skann eller legg inn pris fra mobilskann.")} className="rounded-2xl bg-brand px-4 py-3 text-sm font-black text-white">
+                      Oppdater pris
+                    </button>
+                    <a href="#produktdata" className="rounded-2xl bg-slate-950 px-4 py-3 text-center text-sm font-black text-white">
+                      Rett produktdata
+                    </a>
+                  </div>
+                </div>
+              </section>
 
-            <section className="card p-5">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand">Nåbeslutning</p>
-                  <h2 className="mt-1 text-2xl font-bold">Beste pris for denne forpakningen</h2>
-                  <p className="mt-1 text-sm text-muted">Bruker bare priser som er maks 45 dager gamle. Historikk ligger fortsatt i basen.</p>
+              <section className="card p-4 md:p-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-brand">Beste kjøp nå</p>
+                    <h2 className="mt-1 text-2xl font-black">Beste pris for denne forpakningen</h2>
+                    <p className="mt-1 text-sm text-muted">Bare nåpriser brukes: grønn 0–30 dager, gul 31–45 dager.</p>
+                  </div>
+                  {bestCurrentPrice ? <span className={`hidden rounded-full px-3 py-1 text-xs font-black md:inline-flex ${freshnessClass(bestCurrentPrice.observed_at)}`}>{freshnessLabel(bestCurrentPrice.observed_at)}</span> : null}
                 </div>
                 {bestCurrentPrice ? (
-                  <div className="rounded-3xl bg-emerald-50 px-6 py-4 text-right">
-                    <p className="text-sm font-bold uppercase tracking-[0.12em] text-brand">Beste nå</p>
-                    <p className="mt-1 text-4xl font-bold text-brand">{unitPriceLabel(bestCurrentPrice.unit_price, bestCurrentPrice.comparison_unit)}</p>
-                    <p className="mt-1 text-sm font-semibold text-slate-700">{kr(bestCurrentPrice.price)} · {bestCurrentPrice.store_name}</p>
-                  </div>
-                ) : null}
-              </div>
-              {!bestCurrentPrice ? <p className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm font-semibold text-amber-800">Ingen trygg nåpris. Skann hyllepris for å oppdatere.</p> : null}
-            </section>
-
-            <section className="grid grid-cols-[1fr_380px] gap-5">
-              <section className="card p-5">
-                <h2 className="text-xl font-bold">Produktdata</h2>
-                <p className="mt-1 text-sm text-muted">Rett feltene som påvirker kobling, pakningsstørrelse og enhetspris.</p>
-                <div className="mt-5 grid grid-cols-2 gap-4">
-                  <label className="space-y-1 text-sm"><span className="font-semibold">Produktnavn</span><input className="w-full rounded-xl border border-line px-3 py-2" value={String(form.name ?? "")} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
-                  <label className="space-y-1 text-sm"><span className="font-semibold">Merke</span><input className="w-full rounded-xl border border-line px-3 py-2" value={String(form.brand ?? "")} onChange={(e) => setForm({ ...form, brand: e.target.value })} /></label>
-                  <label className="space-y-1 text-sm"><span className="font-semibold">Kategori</span><input className="w-full rounded-xl border border-line px-3 py-2" placeholder="Brus, Cashewnøtter, Pasta..." value={String(form.category ?? "")} onChange={(e) => setForm({ ...form, category: e.target.value })} /></label>
-                  <label className="space-y-1 text-sm"><span className="font-semibold">Pakningsstørrelse</span><input className="w-full rounded-xl border border-line px-3 py-2" placeholder="1500 ml, 500 g, 9000 ml" value={String(form.package_size ?? "")} onChange={(e) => setForm({ ...form, package_size: e.target.value })} /><span className="text-xs text-muted">Viktig for riktig kr/kg eller kr/l.</span></label>
-                  <label className="space-y-1 text-sm"><span className="font-semibold">EAN</span><input className="w-full rounded-xl border border-line bg-slate-50 px-3 py-2 text-muted" value={data.product.ean ?? ""} readOnly /></label>
-                  <label className="space-y-1 text-sm"><span className="font-semibold">Foretrukket butikk</span><input className="w-full rounded-xl border border-line px-3 py-2" placeholder="KIWI, MENY..." value={String(form.preferred_store ?? "")} onChange={(e) => setForm({ ...form, preferred_store: e.target.value })} /></label>
-                </div>
-              </section>
-
-              <section className="card p-5">
-                <h2 className="text-xl font-bold">Basisregler</h2>
-                <div className="mt-5 space-y-4">
-                  <label className="block space-y-1 text-sm"><span className="font-semibold">Målpris</span><input type="number" step="0.01" className="w-full rounded-xl border border-line px-3 py-2" value={String(form.target_price ?? "")} onChange={(e) => setForm({ ...form, target_price: e.target.value })} /></label>
-                  <label className="block space-y-1 text-sm"><span className="font-semibold">Målpris-type</span><select className="w-full rounded-xl border border-line px-3 py-2" value={String(form.target_price_unit ?? "unit")} onChange={(e) => setForm({ ...form, target_price_unit: e.target.value })}><option value="unit">Per stk/pakke</option><option value="unit_price">Per kg/l/enhet</option></select></label>
-                  <label className="block space-y-1 text-sm"><span className="font-semibold">Ønsket lager</span><input type="number" step="1" className="w-full rounded-xl border border-line px-3 py-2" value={String(form.desired_stock ?? "")} onChange={(e) => setForm({ ...form, desired_stock: e.target.value })} /></label>
-                  <label className="flex items-center gap-2 rounded-xl border border-line px-3 py-2 text-sm"><input type="checkbox" checked={Boolean(form.is_basis)} onChange={(e) => setForm({ ...form, is_basis: e.target.checked })} /> Med i basisvarer</label>
-                  <label className="flex items-center gap-2 rounded-xl border border-line px-3 py-2 text-sm"><input type="checkbox" checked={Boolean(form.is_freezable)} onChange={(e) => setForm({ ...form, is_freezable: e.target.checked })} /> Kan fryses</label>
-                </div>
-              </section>
-            </section>
-
-            <section className="card p-5">
-              <h2 className="text-xl font-bold">Notat / regel</h2>
-              <textarea className="mt-3 min-h-24 w-full rounded-xl border border-line px-3 py-2" value={String(form.notes ?? "")} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Eksempel: Kjøp når pris er under målpris og lager <= 1." />
-            </section>
-
-            <section className="grid grid-cols-[1fr_360px] gap-5">
-              <section className="card p-5">
-                <h2 className="text-xl font-bold">Prisvedlikehold</h2>
-                <p className="mt-1 text-sm text-muted">Viser siste observasjoner for feilretting. Bruk Endre eller Slett hvis en pris er feil.</p>
-                <div className="mt-4 space-y-2">
-                  {data.price_observations.slice(0, 8).map((item) => (
-                    <div key={item.id} className="rounded-2xl bg-slate-50 p-4 text-sm">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-bold">{item.store_name}</p>
-                          <p className="mt-1 text-xs text-muted">{shortDateTime(item.observed_at)} · {priceSourceLabel(item.source)}</p>
-                          <p className="mt-1 text-xs text-muted">Pakning: {packageLabel(data.product, item)}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-lg font-bold text-brand">{kr(item.price)}</p>
-                          <p className="text-sm font-semibold text-muted">{unitPriceLabel(item.unit_price, item.comparison_unit)}</p>
-                          <span className={`mt-2 inline-flex rounded-full px-2 py-1 text-xs font-bold ${freshnessClass(item.observed_at)}`}>{freshnessLabel(item.observed_at)}</span>
-                        </div>
+                  <div className="mt-4 rounded-3xl bg-emerald-50 p-4">
+                    <div className="flex items-end justify-between gap-4">
+                      <div>
+                        <p className="text-sm font-bold text-slate-600">{bestCurrentPrice.store_name} · {priceSourceLabel(bestCurrentPrice.source)}</p>
+                        <p className="mt-1 text-4xl font-black text-brand">{unitPriceLabel(bestCurrentPrice.unit_price, bestCurrentPrice.comparison_unit)}</p>
+                        <p className="mt-1 text-sm font-bold text-slate-700">{kr(bestCurrentPrice.price)} · {packageLabel(data.product, bestCurrentPrice)}</p>
                       </div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <button type="button" onClick={() => editPriceObservation(item)} className="rounded-lg border border-line bg-white px-3 py-1 text-xs font-semibold text-slate-700">Endre</button>
-                        <button type="button" onClick={() => deletePriceObservation(item)} className="rounded-lg border border-rose-200 bg-white px-3 py-1 text-xs font-semibold text-rose-700">Slett</button>
-                      </div>
+                      <span className={`rounded-full px-3 py-1 text-xs font-black ${freshnessClass(bestCurrentPrice.observed_at)}`}>{freshnessLabel(bestCurrentPrice.observed_at)}</span>
                     </div>
-                  ))}
-                  {!data.price_observations.length ? <p className="text-sm text-muted">Ingen prisobservasjoner ennå.</p> : null}
-                </div>
+                  </div>
+                ) : (
+                  <p className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm font-bold text-amber-800">Ingen trygg nåpris. Skann produkt eller kvittering for å bidra med ny pris.</p>
+                )}
               </section>
 
-              <section className="card p-5">
-                <h2 className="text-xl font-bold">Lagerlinjer</h2>
+              <section id="produktdata" className="card p-0">
+                <details open className="group">
+                  <summary className="flex cursor-pointer list-none items-center justify-between p-4 md:p-6">
+                    <div>
+                      <h2 className="text-xl font-black">Produktdata</h2>
+                      <p className="mt-1 text-sm text-muted">Rett navn, kategori og pakning når produktet er feil.</p>
+                    </div>
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-black text-slate-700 group-open:hidden">Åpne</span>
+                    <span className="hidden rounded-full bg-slate-100 px-3 py-1 text-sm font-black text-slate-700 group-open:inline-flex">Lukk</span>
+                  </summary>
+                  <div className="grid gap-4 border-t border-line p-4 md:grid-cols-2 md:p-6">
+                    <label className="space-y-1 text-sm"><span className="font-bold">Produktnavn</span><input className="w-full rounded-xl border border-line px-3 py-3" value={String(form.name ?? "")} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
+                    <label className="space-y-1 text-sm"><span className="font-bold">Merke</span><input className="w-full rounded-xl border border-line px-3 py-3" value={String(form.brand ?? "")} onChange={(e) => setForm({ ...form, brand: e.target.value })} /></label>
+                    <label className="space-y-1 text-sm"><span className="font-bold">Kategori</span><input className="w-full rounded-xl border border-line px-3 py-3" placeholder="Brus, Pasta, Ketchup..." value={String(form.category ?? "")} onChange={(e) => setForm({ ...form, category: e.target.value })} /></label>
+                    <label className="space-y-1 text-sm"><span className="font-bold">Pakningsstørrelse</span><input className="w-full rounded-xl border border-line px-3 py-3" placeholder="1500 ml, 500 g, 9000 ml" value={String(form.package_size ?? "")} onChange={(e) => setForm({ ...form, package_size: e.target.value })} /><span className="text-xs text-muted">Viktig for riktig kr/kg eller kr/l.</span></label>
+                    <label className="space-y-1 text-sm"><span className="font-bold">EAN</span><input className="w-full rounded-xl border border-line bg-slate-50 px-3 py-3 text-muted" value={data.product.ean ?? ""} readOnly /></label>
+                    <label className="space-y-1 text-sm"><span className="font-bold">Foretrukket butikk</span><input className="w-full rounded-xl border border-line px-3 py-3" placeholder="KIWI, MENY..." value={String(form.preferred_store ?? "")} onChange={(e) => setForm({ ...form, preferred_store: e.target.value })} /></label>
+                  </div>
+                </details>
+              </section>
+
+              <section className="card p-0">
+                <details className="group">
+                  <summary className="flex cursor-pointer list-none items-center justify-between p-4 md:p-6">
+                    <div>
+                      <h2 className="text-xl font-black">Basisregler</h2>
+                      <p className="mt-1 text-sm text-muted">Målpris, lager og husholdningsregler.</p>
+                    </div>
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-black text-slate-700 group-open:hidden">Åpne</span>
+                    <span className="hidden rounded-full bg-slate-100 px-3 py-1 text-sm font-black text-slate-700 group-open:inline-flex">Lukk</span>
+                  </summary>
+                  <div className="grid gap-4 border-t border-line p-4 md:grid-cols-2 md:p-6">
+                    <label className="space-y-1 text-sm"><span className="font-bold">Målpris</span><input type="number" step="0.01" className="w-full rounded-xl border border-line px-3 py-3" value={String(form.target_price ?? "")} onChange={(e) => setForm({ ...form, target_price: e.target.value })} /></label>
+                    <label className="space-y-1 text-sm"><span className="font-bold">Målpris-type</span><select className="w-full rounded-xl border border-line px-3 py-3" value={String(form.target_price_unit ?? "unit")} onChange={(e) => setForm({ ...form, target_price_unit: e.target.value })}><option value="unit">Per stk/pakke</option><option value="unit_price">Per kg/l/enhet</option></select></label>
+                    <label className="space-y-1 text-sm"><span className="font-bold">Ønsket lager</span><input type="number" step="1" className="w-full rounded-xl border border-line px-3 py-3" value={String(form.desired_stock ?? "")} onChange={(e) => setForm({ ...form, desired_stock: e.target.value })} /></label>
+                    <label className="flex items-center gap-3 rounded-xl border border-line px-3 py-3 text-sm font-bold"><input type="checkbox" checked={Boolean(form.is_basis)} onChange={(e) => setForm({ ...form, is_basis: e.target.checked })} /> Med i basisvarer</label>
+                    <label className="flex items-center gap-3 rounded-xl border border-line px-3 py-3 text-sm font-bold"><input type="checkbox" checked={Boolean(form.is_freezable)} onChange={(e) => setForm({ ...form, is_freezable: e.target.checked })} /> Kan fryses</label>
+                    <label className="space-y-1 text-sm md:col-span-2"><span className="font-bold">Notat / regel</span><textarea className="min-h-24 w-full rounded-xl border border-line px-3 py-3" value={String(form.notes ?? "")} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Eksempel: Kjøp når pris er under målpris og lager <= 1." /></label>
+                  </div>
+                </details>
+              </section>
+
+              <section className="card p-0">
+                <details className="group">
+                  <summary className="flex cursor-pointer list-none items-center justify-between p-4 md:p-6">
+                    <div>
+                      <h2 className="text-xl font-black">Prisvedlikehold</h2>
+                      <p className="mt-1 text-sm text-muted">Bruk bare ved feil pris. Historikk vises ikke som beslutningsgrunnlag.</p>
+                    </div>
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-black text-slate-700 group-open:hidden">Åpne</span>
+                    <span className="hidden rounded-full bg-slate-100 px-3 py-1 text-sm font-black text-slate-700 group-open:inline-flex">Lukk</span>
+                  </summary>
+                  <div className="space-y-2 border-t border-line p-4 md:p-6">
+                    {data.price_observations.slice(0, 8).map((item) => (
+                      <div key={item.id} className="rounded-2xl bg-slate-50 p-4 text-sm">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-black">{item.store_name}</p>
+                            <p className="mt-1 text-xs text-muted">{shortDateTime(item.observed_at)} · {priceSourceLabel(item.source)}</p>
+                            <p className="mt-1 text-xs text-muted">Pakning: {packageLabel(data.product, item)}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-lg font-black text-brand">{kr(item.price)}</p>
+                            <p className="text-sm font-bold text-muted">{unitPriceLabel(item.unit_price, item.comparison_unit)}</p>
+                            <span className={`mt-2 inline-flex rounded-full px-2 py-1 text-xs font-black ${freshnessClass(item.observed_at)}`}>{freshnessLabel(item.observed_at)}</span>
+                          </div>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button type="button" onClick={() => editPriceObservation(item)} className="rounded-lg border border-line bg-white px-3 py-2 text-xs font-bold text-slate-700">Endre</button>
+                          <button type="button" onClick={() => deletePriceObservation(item)} className="rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-bold text-rose-700">Slett</button>
+                        </div>
+                      </div>
+                    ))}
+                    {!data.price_observations.length ? <p className="text-sm text-muted">Ingen prisobservasjoner ennå.</p> : null}
+                  </div>
+                </details>
+              </section>
+            </main>
+
+            <aside className="space-y-4 md:sticky md:top-6">
+              <section className="card p-4 md:p-5">
+                <h2 className="text-lg font-black">Må sjekkes</h2>
+                {issues.length ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {issues.map((issue) => <span key={issue} className="rounded-full bg-amber-50 px-3 py-1 text-sm font-bold text-amber-800">{issue}</span>)}
+                  </div>
+                ) : <p className="mt-2 text-sm text-muted">Ingen åpenbare datamangler.</p>}
+              </section>
+
+              <section className="card p-4 md:p-5">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-black">Lagerlinjer</h2>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-700">{stockTotal} / {desiredTotal}</span>
+                </div>
                 <div className="mt-4 space-y-2">
                   {data.inventory.map((item) => (
                     <div key={item.id} className="rounded-2xl bg-slate-50 p-4 text-sm">
-                      <div className="flex justify-between"><span className="font-semibold">{item.location}</span><span>{item.quantity} / {item.desired_quantity}</span></div>
+                      <div className="flex justify-between"><span className="font-bold">{item.location}</span><span>{item.quantity} / {item.desired_quantity}</span></div>
                       <p className="mt-1 text-xs text-muted">Oppdatert {shortDate(item.updated_at)}</p>
                     </div>
                   ))}
-                  {!data.inventory.length ? <p className="text-sm text-muted">Ingen lagerlinje ennå. Lagre produktet for å opprette en.</p> : null}
+                  {!data.inventory.length ? <p className="text-sm text-muted">Ingen lagerlinje ennå.</p> : null}
                 </div>
               </section>
-            </section>
-          </main>
-        </div>
-      ) : null}
+
+              <section className="card p-4 md:p-5">
+                <h2 className="text-lg font-black">Admin</h2>
+                <div className="mt-3 grid gap-2">
+                  <Link href={`/products/${productId}/assessment`} className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-center text-sm font-black text-brand">AI-vurdering</Link>
+                  <button onClick={syncProduct} disabled={syncing || loading} className="rounded-2xl border border-line bg-white px-4 py-3 text-sm font-black text-slate-700 disabled:opacity-60">
+                    {syncing ? "Synker..." : "Synk priser"}
+                  </button>
+                </div>
+              </section>
+            </aside>
+          </div>
+        ) : null}
+      </div>
     </AppShell>
   );
 }

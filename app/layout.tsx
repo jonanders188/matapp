@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Husholdningspilot",
-  description: "Smart innkjøpsassistent for husholdningen"
+  title: "Matmakt",
+  description: "Felles prisdata for smartere husholdninger",
+  icons: { icon: "/favicon.svg" }
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

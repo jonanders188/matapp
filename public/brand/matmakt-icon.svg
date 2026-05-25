@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Matmakt ikon">
+  <rect width="256" height="256" rx="56" fill="#f8fafc"/>
+  <path d="M50 100h156c10 0 17 10 13 19l-27 65c-3 8-11 13-20 13H84c-9 0-17-5-20-13l-27-65c-4-9 3-19 13-19Z" fill="#047857"/>
+  <path d="M78 144h18v32H78zM119 144h18v32h-18zM160 144h18v32h-18z" fill="#fff" opacity=".92"/>
+  <path d="M64 98V55c0-10 8-18 18-18h92c10 0 18 8 18 18v43" fill="none" stroke="#064e3b" stroke-width="16" stroke-linecap="round"/>
+  <path d="M40 105h31l34-30 45 27 56-52" fill="none" stroke="#111827" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="40" cy="105" r="12" fill="#047857"/>
+  <circle cx="105" cy="75" r="13" fill="#111827"/>
+  <circle cx="150" cy="102" r="13" fill="#111827"/>
+  <circle cx="206" cy="50" r="14" fill="#f97316"/>
+</svg>

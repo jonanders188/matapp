@@ -54,12 +54,15 @@ export default function LoginPage() {
     <main className="grid min-h-screen place-items-center bg-[#f6f7f5] p-4">
       <section className="w-full max-w-md rounded-3xl border border-line bg-white p-8 shadow-soft">
         <div className="mb-8 flex items-center gap-3 text-xl font-bold text-brand">
-          <div className="grid h-10 w-10 place-items-center rounded-2xl bg-brand-soft">🛒</div>
-          Husholdningspilot
+          <img src="/brand/matmakt-mark.svg" alt="" className="h-12 w-12" />
+          <div>
+            <p className="text-2xl font-black text-slate-950">Matmakt</p>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Ta kontroll på basisvarene</p>
+          </div>
         </div>
 
         <h1 className="page-heading">Logg inn</h1>
-        <p className="mt-2 text-sm text-muted">Bruk Supabase-brukeren som er medlem av husholdningen.</p>
+        <p className="mt-2 text-sm text-muted">Felles prisdata for smartere husholdninger.</p>
 
         <form onSubmit={signInWithPassword} className="mt-6 space-y-4">
           <label className="block text-sm font-medium text-slate-700">

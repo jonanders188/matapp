@@ -166,7 +166,7 @@ export default function PricesPage() {
         <div>
           <h1 className="page-heading">Prissammenligning</h1>
           <p className="page-subtitle">
-            Sammenlign butikker basert på basisvarene til Damgata 21D, ikke tilfeldige produkter.
+            Sammenlign butikker basert på husholdningens basisvarer, ikke tilfeldige produkter.
           </p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row">
@@ -361,7 +361,7 @@ export default function PricesPage() {
           <section className="card p-5">
             <h2 className="font-semibold">Hva sammenlignes?</h2>
             <p className="mt-3 text-sm text-muted">
-              Prissammenligningen bruker fortsatt konkret EAN/produkt. Enhetspris vises som støtteinformasjon innenfor samme EAN. Butikkrangeringen bruker en parvis prisindeks: hvert butikkpar sammenlignes bare på produktene der begge har gyldig pris siste 14 dager. Par med færre enn 3 felles produkter hoppes over. Priser mellom 15 og 30 dager vises bare som gammel fallback i produkttabellen, men teller ikke i rangeringen.
+              Prissammenligningen bruker faktiske prisobservasjoner fra produkter og kvitteringer. Hovedvisningen handler om nåsituasjonen: aktuelle priser prioriteres, gamle priser blir liggende i databasen men brukes ikke som anbefaling.
             </p>
             <Link href="/products" className="mt-4 inline-flex rounded-xl border border-line px-4 py-2 text-sm font-medium text-brand">
               Administrer basisvarer

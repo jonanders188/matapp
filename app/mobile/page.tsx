@@ -616,7 +616,7 @@ export default function MobileScanPage() {
       streamRef.current = null;
       setCameraReady(false);
       setCameraPaused(true);
-      setMessage("Kameraet er pauset etter 1 minutt. Trykk Skann neste vare for å fortsette.");
+      setMessage("Kameraet er pauset etter 1 minutt. Trykk Skann neste produkt for å fortsette.");
     }, 60_000);
 
     return () => window.clearTimeout(timer);
@@ -689,7 +689,7 @@ export default function MobileScanPage() {
                     <label htmlFor="active-store" className="shrink-0 text-xs font-black uppercase tracking-[0.18em] text-slate-500">
                       Aktiv butikk
                     </label>
-                    <p className="mt-1 text-sm font-bold text-slate-500">Velg butikk i menyen over kamerabildet.</p>
+                    <p className="mt-1 text-sm font-bold text-slate-500">Velg butikk og del faktiske hyllepriser på basisvarer.</p>
                   </div>
                   <Link href="/dashboard" className="rounded-full bg-slate-100 px-3 py-2 text-xs font-black text-slate-700">
                     Dashboard
@@ -728,7 +728,7 @@ export default function MobileScanPage() {
               {cameraPaused && selectedStore ? (
                 <div className="absolute inset-0 flex items-center justify-center bg-slate-950/75 p-6 text-center">
                   <button type="button" onClick={nextProduct} className="rounded-3xl bg-emerald-300 px-6 py-5 text-xl font-black text-slate-950">
-                    Skann neste vare
+                    Skann neste produkt
                   </button>
                 </div>
               ) : null}
@@ -775,7 +775,7 @@ export default function MobileScanPage() {
                     Dashboard
                   </Link>
                   <button type="button" onClick={nextProduct} className="rounded-3xl bg-slate-950 px-5 py-4 text-sm font-black text-white">
-                    Neste vare
+                    Neste produkt
                   </button>
                 </div>
               </div>
@@ -786,14 +786,14 @@ export default function MobileScanPage() {
                   onClick={() => setMobileMode("update_price")}
                   className={`rounded-2xl px-3 py-3 text-sm font-black ${mobileMode === "update_price" ? "bg-emerald-700 text-white shadow" : "text-slate-600"}`}
                 >
-                  Legg inn pris
+                  Del pris
                 </button>
                 <button
                   type="button"
                   onClick={() => setMobileMode("best_prices")}
                   className={`rounded-2xl px-3 py-3 text-sm font-black ${mobileMode === "best_prices" ? "bg-slate-950 text-white shadow" : "text-slate-600"}`}
                 >
-                  Vis beste priser
+                  Beste kjøp nå
                 </button>
               </div>
             </section>
@@ -806,7 +806,7 @@ export default function MobileScanPage() {
                   <div className="h-24 w-24 rounded-3xl bg-slate-100" />
                 )}
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Produktregistrert</p>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Produkt skannet</p>
                   <h2 className="mt-2 text-[1.9rem] font-black leading-tight">{lookup.product?.name ?? lookup.ean}</h2>
                   <p className="mt-1 text-sm text-slate-500">{lookup.product?.brand ?? "Ukjent merke"} · EAN {lookup.ean}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -823,7 +823,7 @@ export default function MobileScanPage() {
               <section className="order-20 rounded-[2rem] bg-white p-5 text-slate-950 shadow-xl ring-2 ring-emerald-200">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Oppdater butikkpris</p>
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Del butikkpris</p>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <StoreLogoBadge storeKey={selectedStore?.storeKey} storeName={selectedStore?.storeName} />
                     </div>
@@ -832,7 +832,7 @@ export default function MobileScanPage() {
                         Sist kjent her: {kr(selectedStorePrice.price)} · {formatDate(selectedStorePrice.observedAt)}
                       </p>
                     ) : (
-                      <p className="mt-2 text-sm font-bold text-slate-500">Ingen kjent pris for denne butikken. Skriv hyllepris og lagre.</p>
+                      <p className="mt-2 text-sm font-bold text-slate-500">Ingen kjent pris for denne butikken. Skriv butikkprisen og del den.</p>
                     )}
                   </div>
                   {selectedStorePrice?.price ? <p className="text-3xl font-black text-emerald-700">{kr(selectedStorePrice.price)}</p> : null}
@@ -882,7 +882,7 @@ export default function MobileScanPage() {
                     className="mt-3 w-full rounded-3xl border-2 border-slate-200 px-4 py-5 text-4xl font-black text-slate-950 outline-none focus:border-emerald-500"
                   />
                   <p className="mt-2 text-sm font-semibold text-slate-500">
-                    Er hylleprisen lik sist kjent pris, trykk Lagre. Er den annerledes, skriv ny pris først.
+                    Er butikkprisen lik sist kjent pris, trykk Lagre. Er den annerledes, skriv ny pris først.
                   </p>
                 </div>
 
@@ -968,7 +968,7 @@ export default function MobileScanPage() {
                   </div>
                 ) : (
                   <p className="mt-4 rounded-2xl bg-slate-50 p-3 text-sm font-bold text-slate-600">
-                    Ingen trygg nåpris funnet. Skann hylleprisen for å oppdatere.
+                    Ingen trygg nåpris funnet. Skann produktet eller kvitteringen for å bidra med ny pris.
                   </p>
                 )}
 
@@ -1052,7 +1052,7 @@ export default function MobileScanPage() {
             ) : null}
 
             <button type="button" onClick={nextProduct} className="sticky bottom-4 z-20 order-[100] w-full rounded-3xl bg-white px-5 py-5 text-xl font-black text-slate-950 shadow-xl shadow-black/30">
-              Skann neste vare
+              Skann neste produkt
             </button>
           </div>
         ) : null}

@@ -66,12 +66,12 @@ const priceSourceOptions: Array<{ key: PriceSourcePreferenceKey; label: string; 
   },
   {
     key: "include_own_shelf_edge",
-    label: "Egne hyllekant-/skannepriser",
-    description: "Priser dere selv har registrert via hyllekant eller mobilscan."
+    label: "Egne skannede priser",
+    description: "Priser dere selv har registrert ved å skanne produkt, skrive pris eller importere kvittering."
   },
   {
     key: "include_other_shelf_edge",
-    label: "Hyllekant-/skannepriser fra andre",
+    label: "Skannede priser fra andre",
     description: "Delte prisobservasjoner fra andre husholdninger."
   },
   {
