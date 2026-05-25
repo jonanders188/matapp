@@ -134,17 +134,29 @@ export function AppShell({ active, children }: { active: string; children: React
           data?: {
             household?: HouseholdSummary | null;
             households?: HouseholdSummary[];
+            requestedHouseholdWasInvalid?: boolean;
             capabilities?: { canUseApp?: boolean; canManageHousehold?: boolean; canAccessSystemAdmin?: boolean };
           };
+          error?: string;
         } | null;
 
         if (cancelled) return;
 
+        if (response.status === 401) {
+          const next = encodeURIComponent(window.location.pathname + window.location.search);
+          window.location.assign(`/login?next=${next}`);
+          return;
+        }
+
         const activeHousehold = payload?.data?.household ?? null;
         const households = payload?.data?.households ?? [];
 
-        if (activeHousehold && typeof window !== "undefined") {
-          window.localStorage.setItem("matmakt.activeHouseholdId", activeHousehold.id);
+        if (typeof window !== "undefined") {
+          if (activeHousehold) {
+            window.localStorage.setItem("matmakt.activeHouseholdId", activeHousehold.id);
+          } else if (payload?.data?.requestedHouseholdWasInvalid) {
+            window.localStorage.removeItem("matmakt.activeHouseholdId");
+          }
         }
 
         setAccess({
@@ -169,7 +181,16 @@ export function AppShell({ active, children }: { active: string; children: React
 
   function switchHousehold(householdId: string) {
     if (!householdId || householdId === access.activeHousehold?.id) return;
+    const nextHousehold = access.households.find((household) => household.id === householdId) ?? null;
     window.localStorage.setItem("matmakt.activeHouseholdId", householdId);
+
+    // Hvis man staar paa en adminside og bytter til en husholdning der man bare er medlem,
+    // send brukeren til dashboard i stedet for aa vise forvirrende auth-/adminfeil.
+    if (nextHousehold?.role !== "admin" && activeRequiresHouseholdAdmin(active)) {
+      window.location.assign("/dashboard");
+      return;
+    }
+
     window.location.reload();
   }
 

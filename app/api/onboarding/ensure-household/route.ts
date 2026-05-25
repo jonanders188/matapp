@@ -7,19 +7,40 @@ function displayNameFromEmail(email: string | null) {
   return email.split("@")[0]?.replace(/[._-]+/g, " ").trim() || "Eier";
 }
 
+function requestedHouseholdId(request: Request) {
+  const fromHeader = request.headers.get("x-matmakt-household-id")?.trim();
+  if (fromHeader) return fromHeader;
+
+  try {
+    const url = new URL(request.url);
+    return url.searchParams.get("household_id")?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const user = await requireAuthenticatedUser(request);
     const supabase = getSupabaseAdmin();
+    const selectedHouseholdId = requestedHouseholdId(request);
 
-    const { data: existing, error: existingError } = await supabase
+    let membershipQuery = supabase
       .from("household_members")
       .select("household_id, role")
-      .eq("user_id", user.userId)
-      .limit(1)
-      .maybeSingle();
+      .eq("user_id", user.userId);
+
+    if (selectedHouseholdId) {
+      membershipQuery = membershipQuery.eq("household_id", selectedHouseholdId);
+    }
+
+    const { data: memberships, error: existingError } = await membershipQuery
+      .order("created_at", { ascending: true })
+      .limit(1);
 
     if (existingError) throw existingError;
+
+    const existing = memberships?.[0] ?? null;
 
     if (existing?.household_id) {
       return NextResponse.json({
@@ -29,6 +50,13 @@ export async function POST(request: Request) {
           created: false
         }
       });
+    }
+
+    if (selectedHouseholdId) {
+      return NextResponse.json(
+        { error: "Invitasjonen er ikke gyldig for denne e-posten, eller du er ikke medlem av valgt husholdning." },
+        { status: 403 }
+      );
     }
 
     const { data: household, error: householdError } = await supabase

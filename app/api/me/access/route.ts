@@ -74,8 +74,12 @@ export async function GET(request: Request) {
     });
 
     const selectedMembership = selectedHouseholdId
-      ? households.find((household) => household.id === selectedHouseholdId) ?? null
+      ? households.find((household) => household.id === selectedHouseholdId) ?? households[0] ?? null
       : households[0] ?? null;
+
+    const requestedHouseholdWasInvalid = Boolean(
+      selectedHouseholdId && !households.some((household) => household.id === selectedHouseholdId)
+    );
 
     const { data: systemAdmin, error: systemAdminError } = await supabase
       .from("system_admins")
@@ -98,6 +102,7 @@ export async function GET(request: Request) {
         },
         household: selectedMembership,
         households,
+        requestedHouseholdWasInvalid,
         capabilities: {
           canUseApp: Boolean(selectedMembership?.id),
           canManageHousehold: isHouseholdAdmin,
