@@ -97,6 +97,7 @@ const priceSourceOptions: Array<{ key: PriceSourcePreferenceKey; label: string; 
 ];
 
 function roleLabel(role: MemberRole) {
+  if (role === "child") return "Medlem";
   return roles.find((item) => item.value === role)?.label ?? role;
 }
 
@@ -573,7 +574,7 @@ export default function AdminPage() {
             <section className="card overflow-hidden">
               <div className="border-b border-line p-5">
                 <h2 className="section-title">Brukere i husholdningen</h2>
-                <p className="text-sm leading-6 text-muted">Endre rolle til admin, medlem eller barn. Husholdningen må alltid ha minst én admin.</p>
+                <p className="text-sm leading-6 text-muted">Endre rolle til admin eller medlem. Barn og medlem har samme tilgang foreløpig. Husholdningen må alltid ha minst én admin.</p>
               </div>
 
               <div className="divide-y divide-line">

@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Box,
@@ -11,6 +14,16 @@ import {
 } from "lucide-react";
 import { cx } from "@/lib/utils";
 import { AuthStatus } from "@/components/auth-status";
+import { authFetch } from "@/lib/auth-fetch";
+
+type AccessState = {
+  loading: boolean;
+  canUseApp: boolean;
+  canManageHousehold: boolean;
+  canAccessSystemAdmin: boolean;
+};
+
+type NavAudience = "member" | "household-admin" | "system-admin";
 
 type NavItem = {
   label: string;
@@ -18,6 +31,7 @@ type NavItem = {
   icon: React.ComponentType<{ size?: number; className?: string }>;
   aliases?: string[];
   description?: string;
+  audience?: NavAudience;
 };
 
 const navSections: { title: string; items: NavItem[] }[] = [
@@ -41,8 +55,8 @@ const navSections: { title: string; items: NavItem[] }[] = [
   {
     title: "Oppsett",
     items: [
-      { label: "Admin", href: "/admin", icon: Settings, aliases: ["Innstillinger", "Oppsett", "Integrasjoner"], description: "Husholdning og butikker" },
-      { label: "Systemadmin", href: "/admin/product-groups", icon: ShieldCheck, aliases: ["Produktgrupper", "System Admin"], description: "Globale produktgrupper" }
+      { label: "Admin", href: "/admin", icon: Settings, aliases: ["Innstillinger", "Oppsett", "Integrasjoner"], description: "Husholdning og butikker", audience: "household-admin" },
+      { label: "Systemadmin", href: "/admin/product-groups", icon: ShieldCheck, aliases: ["Produktgrupper", "System Admin"], description: "Globale produktgrupper", audience: "system-admin" }
     ]
   }
 ];
@@ -57,7 +71,80 @@ function isActive(item: NavItem, active: string) {
   return item.label === active || item.aliases?.includes(active);
 }
 
+function canSeeItem(item: NavItem, access: AccessState) {
+  if (item.audience === "system-admin") return access.canAccessSystemAdmin;
+  if (item.audience === "household-admin") return access.canManageHousehold;
+  return access.canUseApp;
+}
+
+function activeRequiresHouseholdAdmin(active: string) {
+  return ["Admin", "Innstillinger", "Oppsett", "Integrasjoner"].includes(active);
+}
+
+function activeRequiresSystemAdmin(active: string) {
+  return ["Systemadmin", "Produktgrupper", "System Admin"].includes(active);
+}
+
+function AccessDenied({ title, message }: { title: string; message: string }) {
+  return (
+    <section className="rounded-3xl border border-amber-200 bg-amber-50 p-6 text-amber-950">
+      <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-700">Ingen tilgang</p>
+      <h1 className="mt-2 text-2xl font-black">{title}</h1>
+      <p className="mt-2 max-w-2xl text-sm font-semibold text-amber-900">{message}</p>
+      <Link href="/dashboard" className="mt-5 inline-flex rounded-2xl bg-white px-4 py-3 text-sm font-black text-amber-900 ring-1 ring-amber-200">
+        Til forsiden
+      </Link>
+    </section>
+  );
+}
+
 export function AppShell({ active, children }: { active: string; children: React.ReactNode }) {
+  const [access, setAccess] = useState<AccessState>({
+    loading: true,
+    canUseApp: false,
+    canManageHousehold: false,
+    canAccessSystemAdmin: false
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    authFetch("/api/me/access")
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null) as {
+          data?: { capabilities?: { canUseApp?: boolean; canManageHousehold?: boolean; canAccessSystemAdmin?: boolean } };
+        } | null;
+
+        if (cancelled) return;
+
+        setAccess({
+          loading: false,
+          canUseApp: Boolean(payload?.data?.capabilities?.canUseApp),
+          canManageHousehold: Boolean(payload?.data?.capabilities?.canManageHousehold),
+          canAccessSystemAdmin: Boolean(payload?.data?.capabilities?.canAccessSystemAdmin)
+        });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAccess({ loading: false, canUseApp: false, canManageHousehold: false, canAccessSystemAdmin: false });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const visibleSections = useMemo(
+    () => navSections
+      .map((section) => ({ ...section, items: section.items.filter((item) => canSeeItem(item, access)) }))
+      .filter((section) => section.items.length > 0),
+    [access]
+  );
+
+  const blockedByHouseholdAdmin = !access.loading && activeRequiresHouseholdAdmin(active) && !access.canManageHousehold;
+  const blockedBySystemAdmin = !access.loading && activeRequiresSystemAdmin(active) && !access.canAccessSystemAdmin;
+
   return (
     <main className="min-h-screen bg-[#f6f7f5] p-2 sm:p-4">
       <div className="mx-auto flex min-h-[calc(100vh-1rem)] max-w-[1500px] flex-col overflow-hidden rounded-3xl border border-line bg-white shadow-soft sm:min-h-[calc(100vh-2rem)] lg:flex-row">
@@ -73,7 +160,7 @@ export function AppShell({ active, children }: { active: string; children: React
           </Link>
 
           <nav className="space-y-4 lg:space-y-5">
-            {navSections.map((section) => (
+            {visibleSections.map((section) => (
               <div key={section.title}>
                 <p className="mb-2 px-2 text-xs font-semibold uppercase tracking-wide text-muted">{section.title}</p>
                 <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-1">
@@ -120,7 +207,17 @@ export function AppShell({ active, children }: { active: string; children: React
               <AuthStatus />
             </div>
           </header>
-          <div className="p-4 sm:p-6 lg:p-8">{children}</div>
+          <div className="p-4 sm:p-6 lg:p-8">
+            {access.loading ? (
+              <section className="rounded-3xl border border-line bg-white p-6 text-sm font-semibold text-slate-500">Sjekker tilgang...</section>
+            ) : blockedBySystemAdmin ? (
+              <AccessDenied title="Systemadmin kreves" message="Denne delen er bare for systemadmin. Du ser heller ikke systemadmin-menyen uten riktig tilgang." />
+            ) : blockedByHouseholdAdmin ? (
+              <AccessDenied title="Admin kreves" message="Denne delen er bare for husholdningsadmin. Medlem og barn har samme tilgang foreløpig." />
+            ) : (
+              children
+            )}
+          </div>
         </section>
       </div>
     </main>

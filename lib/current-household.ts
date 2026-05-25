@@ -13,6 +13,23 @@ export type AuthenticatedUser = {
   email: string | null;
 };
 
+export function normalizeHouseholdRole(role: string | null | undefined): HouseholdRole {
+  if (role === "admin") return "admin";
+  // Barn og medlem har samme tilgang foreløpig.
+  if (role === "child") return "member";
+  return "member";
+}
+
+export function isHouseholdAdmin(role: string | null | undefined) {
+  return normalizeHouseholdRole(role) === "admin";
+}
+
+export function requireHouseholdAdminRole(role: string | null | undefined) {
+  if (!isHouseholdAdmin(role)) {
+    throw authError("Kun admin kan gjøre dette", 403);
+  }
+}
+
 function readBearerToken(request: Request) {
   const header = request.headers.get("authorization") ?? "";
   const match = header.match(/^Bearer\s+(.+)$/i);
@@ -106,7 +123,7 @@ export async function requireCurrentHousehold(request: Request): Promise<Current
   return {
     userId: user.userId,
     householdId: membership.household_id,
-    role: (membership.role ?? "member") as HouseholdRole
+    role: normalizeHouseholdRole(membership.role)
   };
 }
 

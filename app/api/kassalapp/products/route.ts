@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
+import { apiErrorResponse, requireAuthenticatedUser } from "@/lib/current-household";
 import { findKassalappProductsByEan } from "@/lib/kassalapp";
 
 export async function GET(req: Request) {
+  try {
+    await requireAuthenticatedUser(req);
+  } catch (error) {
+    return apiErrorResponse(error);
+  }
   const url = new URL(req.url);
   const ean = url.searchParams.get("ean");
 

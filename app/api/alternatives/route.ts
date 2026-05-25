@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ensureDefaultHousehold } from "@/lib/db";
+import { apiErrorResponse, requireCurrentHousehold } from "@/lib/current-household";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
 
 type ProductRow = {
@@ -29,15 +29,15 @@ type AlternativeRow = {
   updated_at: string | null;
 };
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const current = await requireCurrentHousehold(request);
     const supabase = getSupabaseAdmin();
-    const household = await ensureDefaultHousehold();
 
     const alternativesResult = await supabase
       .from("product_alternatives")
       .select("id, product_id, alternative_name, alternative_brand, alternative_ean, alternative_image_url, alternative_store_name, alternative_price, alternative_unit_price, confidence, estimated_saving, status, reason, created_at, updated_at")
-      .eq("household_id", household.id)
+      .eq("household_id", current.householdId)
       .order("status", { ascending: true })
       .order("estimated_saving", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false });
@@ -66,6 +66,6 @@ export async function GET() {
     });
   } catch (error) {
     console.error("[api/alternatives] GET feilet", error);
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Kunne ikke hente alternativer" }, { status: 500 });
+    return apiErrorResponse(error);
   }
 }

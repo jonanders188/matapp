@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { apiErrorResponse, requireCurrentHousehold, type HouseholdRole } from "@/lib/current-household";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
 
-const roles: HouseholdRole[] = ["admin", "member", "child"];
+const roles: HouseholdRole[] = ["admin", "member"];
 
 type RouteContext = {
   params: Promise<{ id: string }>;

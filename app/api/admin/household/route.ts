@@ -24,7 +24,6 @@ async function userEmail(userId: string) {
 export async function GET(request: Request) {
   try {
     const current = await requireCurrentHousehold(request);
-    requireAdminRole(current.role);
     const supabase = getSupabaseAdmin();
 
     const [householdResult, membersResult] = await Promise.all([

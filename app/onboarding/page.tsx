@@ -59,7 +59,7 @@ export default function OnboardingPage() {
   const isAdmin = payload?.currentRole === "admin";
   const inviteText = useMemo(() => {
     const name = payload?.household.name || "husholdningen min";
-    return `Bli med i ${name} på Matmakt. Logg inn med e-postadressen din, så kan du skanne varer og kvitteringer for husholdningen.`;
+    return `Bli med i ${name} på Matmakt. Åpne invitasjonen på e-post og logg inn med samme e-postadresse, så blir du koblet til husholdningen.`;
   }, [payload?.household.name]);
 
   async function ensureHousehold() {
@@ -145,14 +145,14 @@ export default function OnboardingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, display_name: newDisplayName.trim(), role: "member" })
       });
-      const result = await response.json().catch(() => null) as { error?: string } | null;
-      if (!response.ok) throw new Error(result?.error ?? "Kunne ikke legge til medlem.");
+      const result = await response.json().catch(() => null) as { data?: { invited?: boolean; message?: string; email?: string }; error?: string } | null;
+      if (!response.ok) throw new Error(result?.error ?? "Kunne ikke sende invitasjon.");
       setNewEmail("");
       setNewDisplayName("");
-      setMessage("Medlemmet er lagt til. Be personen logge inn med samme e-post.");
+      setMessage(result?.data?.message ?? "Invitasjon sendt. Personen kan logge inn med e-post og blir koblet til husholdningen.");
       await loadHousehold();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Kunne ikke legge til medlem.");
+      setError(err instanceof Error ? err.message : "Kunne ikke sende invitasjon.");
     } finally {
       setSaving(null);
     }
@@ -225,7 +225,7 @@ export default function OnboardingPage() {
             <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">2. Medlemmer</p>
             <h2 className="mt-2 text-2xl font-black text-slate-950">Inviter husholdningen</h2>
             <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">
-              Alle kan skanne varer, kvitteringer og holde basisvarene oppdatert. E-post er nok.
+              Send invitasjon på e-post. Personen trenger bare å åpne lenken og logge inn; da er de koblet til husholdningen.
             </p>
             <form onSubmit={addMember} className="mt-4 space-y-3">
               <input
@@ -248,7 +248,7 @@ export default function OnboardingPage() {
                 disabled={loading || !isAdmin || saving === "member"}
                 className="w-full rounded-2xl bg-emerald-700 px-4 py-3 text-sm font-black text-white disabled:opacity-50"
               >
-                {saving === "member" ? "Legger til..." : "Legg til medlem"}
+                {saving === "member" ? "Sender..." : "Send invitasjon"}
               </button>
             </form>
             <button

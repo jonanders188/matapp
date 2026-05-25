@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
+import { apiErrorResponse, requireAuthenticatedUser } from "@/lib/current-household";
 import { latestPriceDate, searchKassalappProducts } from "@/lib/kassalapp";
 
 export async function GET(request: Request) {
+  try {
+    await requireAuthenticatedUser(request);
+  } catch (error) {
+    return apiErrorResponse(error);
+  }
   const { searchParams } = new URL(request.url);
   const query = searchParams.get("q")?.trim();
 
