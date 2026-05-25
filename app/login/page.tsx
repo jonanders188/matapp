@@ -11,6 +11,11 @@ function friendlyAuthError(message: string) {
   return message;
 }
 
+function nextPath() {
+  if (typeof window === "undefined") return "/onboarding";
+  return new URLSearchParams(window.location.search).get("next") || "/onboarding";
+}
+
 export default function LoginPage() {
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
@@ -63,6 +68,30 @@ export default function LoginPage() {
     }
 
     window.location.href = "/onboarding";
+  }
+
+
+  async function signUpWithPassword() {
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+
+    const supabase = getSupabaseBrowserClient();
+    const { error: signUpError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${window.location.origin}${nextPath()}`
+      }
+    });
+
+    setLoading(false);
+    if (signUpError) {
+      setError(signUpError.message);
+      return;
+    }
+
+    setMessage("Sjekk e-posten din for aa bekrefte kontoen.");
   }
 
   async function sendMagicLink() {
@@ -169,6 +198,9 @@ export default function LoginPage() {
 
           <button disabled={loading || !canUsePassword} className="w-full rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
             {loading ? "Jobber..." : mode === "login" ? "Logg inn med passord" : "Opprett konto med passord"}
+          </button>
+          <button type="button" onClick={signUpWithPassword} disabled={loading || !email || !password} className="w-full rounded-xl border border-line px-4 py-3 text-sm font-semibold text-slate-900 disabled:opacity-60">
+            Opprett konto med passord
           </button>
           <button type="button" onClick={sendMagicLink} disabled={loading || !email} className="w-full rounded-xl border border-line px-4 py-3 text-sm font-semibold text-brand disabled:opacity-60">
             Send magic link

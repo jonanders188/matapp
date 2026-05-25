@@ -18,8 +18,10 @@ create table if not exists public.household_invitations (
   constraint household_invitations_status_check check (status in ('pending', 'accepted', 'revoked', 'expired'))
 );
 
+-- Email lagres normalisert lowercase i appen. ON CONFLICT (household_id, email)
+-- krever en vanlig unik indeks, ikke expression-indeks på lower(email).
 create unique index if not exists household_invitations_household_email_idx
-  on public.household_invitations (household_id, lower(email));
+  on public.household_invitations (household_id, email);
 
 create index if not exists household_invitations_token_idx
   on public.household_invitations (token);
