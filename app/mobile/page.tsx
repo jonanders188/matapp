@@ -243,7 +243,7 @@ export default function MobileScanPage() {
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("Velg butikk. Skann produkt. Del pris.");
+  const [message, setMessage] = useState("Velg butikk. Skann produkt. Oppdater pris hvis du vil.");
   const [phase, setPhase] = useState<ScanPhase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [currentEan, setCurrentEan] = useState("");
@@ -586,7 +586,7 @@ export default function MobileScanPage() {
     setError(null);
     setCameraPaused(false);
     setPhase(selectedStore ? "ready" : "idle");
-    setMessage(selectedStore ? `Du er i ${selectedStore.storeName}. Skann en vare.` : "Velg butikk. Skann produkt. Del pris.");
+    setMessage(selectedStore ? `Du er i ${selectedStore.storeName}. Skann en vare.` : "Velg butikk. Skann produkt. Oppdater pris hvis du vil.");
   }, [selectedStoreKey]);
 
   useEffect(() => {
@@ -667,7 +667,7 @@ export default function MobileScanPage() {
     setError(null);
     setBusy(false);
     setPhase(selectedStore ? "ready" : "idle");
-    setMessage(selectedStore ? "Klar for neste vare." : "Velg butikk. Skann produkt. Del pris.");
+    setMessage(selectedStore ? "Klar for neste vare." : "Velg butikk. Skann produkt. Oppdater pris hvis du vil.");
     lastScanRef.current = { ean: "", at: 0 };
 
     window.setTimeout(() => {
@@ -786,7 +786,7 @@ export default function MobileScanPage() {
                   onClick={() => setMobileMode("update_price")}
                   className={`rounded-2xl px-3 py-3 text-sm font-black ${mobileMode === "update_price" ? "bg-emerald-700 text-white shadow" : "text-slate-600"}`}
                 >
-                  Del pris
+                  Oppdater pris
                 </button>
                 <button
                   type="button"
@@ -832,7 +832,7 @@ export default function MobileScanPage() {
                         Sist kjent her: {kr(selectedStorePrice.price)} · {formatDate(selectedStorePrice.observedAt)}
                       </p>
                     ) : (
-                      <p className="mt-2 text-sm font-bold text-slate-500">Ingen kjent pris her. Skriv butikkprisen og del den med fellesskapet.</p>
+                      <p className="mt-2 text-sm font-bold text-slate-500">Ingen kjent pris her. Skriv butikkprisen hvis du vil oppdatere fellesskapet.</p>
                     )}
                   </div>
                   {selectedStorePrice?.price ? <p className="text-3xl font-black text-emerald-700">{kr(selectedStorePrice.price)}</p> : null}
@@ -968,7 +968,7 @@ export default function MobileScanPage() {
                   </div>
                 ) : (
                   <p className="mt-4 rounded-2xl bg-slate-50 p-3 text-sm font-bold text-slate-600">
-                    Ingen trygg nåpris funnet. Skann produktet eller kvitteringen for å bidra med ny pris.
+                    Ingen trygg nåpris funnet. Du kan fortsatt bruke produktet som basisvare, eller oppdatere prisen når du vil.
                   </p>
                 )}
 

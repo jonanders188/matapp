@@ -57,12 +57,12 @@ export default function LoginPage() {
           <img src="/brand/matmakt-mark.svg" alt="" className="h-12 w-12" />
           <div>
             <p className="text-2xl font-black text-slate-950">Matmakt</p>
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Skann. Del. Spar.</p>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Bygg. Sammenlign. Spar.</p>
           </div>
         </div>
 
         <h1 className="page-heading">Logg inn</h1>
-        <p className="mt-2 text-sm text-muted">Logg inn og del priser fra produkter eller kvitteringer. Det er alt som trengs for å bidra.</p>
+        <p className="mt-2 text-sm text-muted">Logg inn, bygg basisvarene dine og bruk felles prisdata. Du deler egne priser bare når du vil.</p>
 
         <form onSubmit={signInWithPassword} className="mt-6 space-y-4">
           <label className="block text-sm font-medium text-slate-700">

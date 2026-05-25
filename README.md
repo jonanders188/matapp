@@ -1,8 +1,8 @@
 # Matmakt
 
-Felles prisdata for smartere husholdninger. Skann produkter og kvitteringer for å bidra til et forbrukerdrevet prisnettverk på basisvarer.
+Felles prisdata for smartere husholdninger. Bygg basisvarer fra det du faktisk har hjemme, skann kvitteringer når du vil, og bruk felles nåpriser uten at bidrag er et krav.
 
-Matmakt er et forbrukerdrevet prisnettverk for basisvarer. Husholdninger deler faktiske butikkpriser og får bedre beslutninger tilbake basert på pris, lager og egne prioriteringer.
+Matmakt er et forbrukerdrevet prisnettverk for basisvarer. Husholdninger kan bygge sitt eget varegrunnlag, dra nytte av crowd sharing, og frivillig dele faktiske butikkpriser når det passer.
 
 ## Inneholder
 

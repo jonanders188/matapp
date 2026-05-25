@@ -6,6 +6,7 @@ import {
   Settings,
   ShieldCheck,
   Smartphone,
+  Sparkles,
   Tags
 } from "lucide-react";
 import { cx } from "@/lib/utils";
@@ -25,13 +26,14 @@ const navSections: { title: string; items: NavItem[] }[] = [
     items: [
       { label: "Lager", href: "/inventory", icon: Box, aliases: ["Inventory"], description: "Beholdning hjemme" },
       { label: "Prisoversikt", href: "/prices", icon: Tags, aliases: ["Priser", "Prissammenligning"], description: "Nåpris på basisvarer" },
-      { label: "Skann kvittering", href: "/mobile2", icon: Smartphone, aliases: ["Kvittering", "Mobile2", "Mobil lager"], description: "Del mange priser på én gang" },
-      { label: "Skann produkt", href: "/mobile", icon: Smartphone, aliases: ["Mobile", "Mobil butikk"], description: "Del én pris raskt" }
+      { label: "Bygg basis", href: "/mobile2", icon: Smartphone, aliases: ["Kvittering", "Mobile2", "Mobil lager", "Skann kvittering"], description: "Skann hjemmevarer uten pris" },
+      { label: "Skann pris", href: "/mobile", icon: Smartphone, aliases: ["Mobile", "Mobil butikk", "Skann produkt"], description: "Oppdater butikkpris når du vil" }
     ]
   },
   {
     title: "Varer",
     items: [
+      { label: "Kom i gang", href: "/onboarding", icon: Sparkles, aliases: ["Onboarding", "Veiviser"], description: "Skann lager først" },
       { label: "Basisvarer", href: "/products", icon: PackageSearch, aliases: ["Basisutvalg", "Produkter"], description: "Ditt faste vareutvalg" },
       { label: "Legg til varer", href: "/catalog", icon: Database, aliases: ["Produktregister", "Katalog"], description: "Finn flere varer" }
     ]
@@ -46,9 +48,9 @@ const navSections: { title: string; items: NavItem[] }[] = [
 ];
 
 const quickActions = [
-  { label: "Skann produkt", href: "/mobile" },
-  { label: "Skann kvittering", href: "/mobile2" },
-  { label: "Mine basisvarer", href: "/products" }
+  { label: "Bygg basis", href: "/mobile2" },
+  { label: "Skann pris", href: "/mobile" },
+  { label: "Kom i gang", href: "/onboarding" }
 ] as const;
 
 function isActive(item: NavItem, active: string) {

@@ -427,7 +427,7 @@ export default function ProductRulesPage() {
                     </div>
                   </div>
                 ) : (
-                  <p className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm font-bold text-amber-800">Ingen trygg nåpris. Skann produkt eller kvittering for å bidra med ny pris.</p>
+                  <p className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm font-bold text-amber-800">Ingen trygg nåpris. Du kan fortsatt ha varen som basisvare og oppdatere pris når du vil.</p>
                 )}
               </section>
 

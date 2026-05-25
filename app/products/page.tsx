@@ -136,11 +136,14 @@ export default function ProductsPage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold">Basisvarer</h1>
-          <p className="mt-1 text-muted">Dette er varene Matmakt skal bry seg om for din husholdning. Hold listen kort og relevant.</p>
+          <p className="mt-1 text-muted">Dette er varene Matmakt skal bry seg om for din husholdning. Hold listen kort og relevant. Ny bruker? Start med enkel veiviser.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Link href="/onboarding" className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800">
+            Enkel veiviser
+          </Link>
           <Link href="/catalog" className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-            Legg til basisvare
+            Søk alle varer
           </Link>
           <button
             onClick={syncBasisPrices}

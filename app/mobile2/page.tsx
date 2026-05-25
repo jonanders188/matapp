@@ -198,11 +198,11 @@ function cleanEan(value: string) {
 }
 
 function modeText(mode: ScanMode) {
-  return mode === "in" ? "Inn på lager" : "Ut av lager";
+  return mode === "in" ? "Bygg basis" : "Brukt opp";
 }
 
 function mobileModeText(mode: MobileMode) {
-  if (mode === "receipt") return "Skann kvittering";
+  if (mode === "receipt") return "Match kvittering";
   return modeText(mode);
 }
 
@@ -803,14 +803,14 @@ export default function MobileScanPage() {
   const lastReceiptAnalysisAtRef = useRef(0);
   const lastScanRef = useRef<{ ean: string; at: number }>({ ean: "", at: 0 });
 
-  const [mode, setMode] = useState<MobileMode>("receipt");
+  const [mode, setMode] = useState<MobileMode>("in");
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraPaused, setCameraPaused] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [manualEan, setManualEan] = useState("");
   const [lastResult, setLastResult] = useState<ScanResponse["data"] | null>(null);
-  const [message, setMessage] = useState("Ta bilde av kvittering eller last opp bilde. Matmakt finner prisene som kan deles.");
+  const [message, setMessage] = useState("Start med å skanne en vare du har hjemme. Den legges på lager og blir basisvare uten pris.");
   const [error, setError] = useState<string | null>(null);
   const [receiptText, setReceiptText] = useState("");
   const [receiptAiLines, setReceiptAiLines] = useState<ReceiptLine[] | null>(null);
@@ -913,7 +913,7 @@ export default function MobileScanPage() {
     setReceiptImportPreview(null);
     setReceiptImportImageBase64(null);
     setReceiptImportStoreKey("");
-    setOcrStatus("Leser kvittering og matcher mot basisvarer med AI...");
+    setOcrStatus("Leser kvittering og finner basisvarer...");
 
     try {
       const imageBase64 = await imageSourceToDataUrl(source);
@@ -955,12 +955,12 @@ export default function MobileScanPage() {
       setError(null);
 
       if (preview.needsStoreConfirmation) {
-        setMessage(`Matmakt fant ${preview.linesRead} linjer. Velg butikk før prisene deles.`);
+        setMessage(`Matmakt fant ${preview.linesRead} linjer. Velg butikk før prisene kan lagres.`);
       } else {
         const secure = preview.secureMatches?.length ?? 0;
         const review = preview.reviewMatches?.length ?? 0;
         const unmatched = preview.unmatchedLines?.length ?? 0;
-        setMessage(`Matmakt fant ${preview.linesRead} linjer. ${secure} priser kan deles nå, ${review} bør sjekkes, ${unmatched} ble ikke matchet.`);
+        setMessage(`Matmakt fant ${preview.linesRead} linjer. ${secure} matcher basisvarer, ${review} bør sjekkes, ${unmatched} kan skannes inn som basisvarer.`);
       }
 
       beep(true);
@@ -1160,18 +1160,18 @@ export default function MobileScanPage() {
     }
 
     if (ean.length < 6) {
-      setError("Skriv eller skann EAN fra hyllekanten før du lagrer.");
+      setError("Skriv eller skann EAN før du lagrer butikkpris.");
       return;
     }
 
     if (price === null || price <= 0) {
-      setError("Skriv en gyldig pris fra hyllekanten før du lagrer.");
+      setError("Skriv en gyldig butikkpris før du lagrer.");
       return;
     }
 
     setBusy(true);
     setError(null);
-    setMessage("Lagrer hyllekantpris...");
+    setMessage("Lagrer butikkpris...");
 
     try {
       const response = await authFetch("/api/mobile/shelf-price", {
@@ -1189,7 +1189,7 @@ export default function MobileScanPage() {
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
         beep(false);
-        setError(payload?.error ?? "Kunne ikke lagre hyllekantpris");
+        setError(payload?.error ?? "Kunne ikke lagre butikkpris");
         return;
       }
 
@@ -1197,10 +1197,10 @@ export default function MobileScanPage() {
       setShelfEan("");
       setShelfPrice("");
       setShelfText("");
-      setMessage(`Hyllekantpris lagret for ${payload?.data?.product?.name ?? ean}: ${price.toFixed(2)} kr hos ${payload?.data?.storeName ?? selectedShelfStore.storeName}.`);
+      setMessage(`Butikkpris lagret for ${payload?.data?.product?.name ?? ean}: ${price.toFixed(2)} kr hos ${payload?.data?.storeName ?? selectedShelfStore.storeName}.`);
     } catch (saveError) {
       beep(false);
-      setError(saveError instanceof Error ? saveError.message : "Kunne ikke lagre hyllekantpris");
+      setError(saveError instanceof Error ? saveError.message : "Kunne ikke lagre butikkpris");
     } finally {
       setBusy(false);
     }
@@ -1217,7 +1217,7 @@ export default function MobileScanPage() {
 
     setBusy(true);
     setError(null);
-    setMessage(`Fant ${ean}. Oppdaterer...`);
+    setMessage(`Fant ${ean}. Legger til på lager...`);
 
     try {
       const response = await authFetch("/api/mobile/scan", {
@@ -1250,7 +1250,7 @@ export default function MobileScanPage() {
       if (!response.ok) {
         beep(false);
         setError(payload?.error ?? "Kunne ikke oppdatere lager");
-        setMessage(payload?.message ?? "Prøv igjen, eller legg varen til i basisutvalget først.");
+        setMessage(payload?.message ?? "Prøv igjen. Hvis varen finnes i Kassalapp, blir den basisvare når den skannes.");
         return;
       }
 
@@ -1265,7 +1265,7 @@ export default function MobileScanPage() {
         const warningText = receiptMatch.warning ? ` ${receiptMatch.warning}` : "";
         setMessage(`Pris fra kvittering delt: ${formatReceiptPrice(receiptMatch.unitPrice)} kr/stk${quantityText}.${warningText}`);
       } else {
-        setMessage(selectedMode === "in" ? "Piip! Lagt inn på lager." : "Piip! Tatt ut av lager.");
+        setMessage(selectedMode === "in" ? ((payload?.data as { madeBasis?: boolean } | undefined)?.madeBasis ? "Piip! Lagt på lager og gjort til basisvare." : "Piip! Lagt på lager. Dette er allerede en basisvare.") : "Piip! Tatt ut av lager.");
       }
     } catch (scanError) {
       beep(false);
@@ -1285,7 +1285,7 @@ export default function MobileScanPage() {
   async function scanNextItem() {
     setCameraPaused(false);
     setError(null);
-    setMessage("Klar for neste vare.");
+    setMessage("Klar for neste vare. Skann videre i kjøleskap, fryser, skuffer eller skap.");
     await startCamera();
   }
 
@@ -1382,7 +1382,7 @@ export default function MobileScanPage() {
             if (analysis.isReceipt && !receiptConfirmedRef.current) {
               receiptConfirmedRef.current = true;
               beep(true);
-              setMessage("Kvittering funnet. Hold stille og trykk ‘Ta bilde’. ");
+              setMessage("Kvittering funnet. Hold stille og trykk ‘Ta bilde’.");
             } else if (!analysis.isReceipt && receiptConfirmedRef.current && analysis.score < 42) {
               receiptConfirmedRef.current = false;
             }
@@ -1430,8 +1430,8 @@ export default function MobileScanPage() {
         <header className="flex items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-300">Matmakt</p>
-            <h1 className="text-3xl font-black">Skann kvittering</h1>
-            <p className="mt-1 text-sm font-semibold text-slate-300">Del mange butikkpriser på én gang.</p>
+            <h1 className="text-3xl font-black">Bygg basisvarer hjemme</h1>
+            <p className="mt-1 text-sm font-semibold text-slate-300">Skann kjøleskap, fryser, skuffer og skap. Pris kan komme senere.</p>
           </div>
           <a href="/dashboard" className="rounded-full bg-white/10 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/15">
             Dashboard
@@ -1440,21 +1440,21 @@ export default function MobileScanPage() {
 
         <section className="mt-5 grid grid-cols-3 gap-2 rounded-3xl bg-white/8 p-2 ring-1 ring-white/10">
           <button
+            onClick={() => setMode("in")}
+            className={`rounded-2xl px-3 py-4 text-left transition ${mode === "in" ? "bg-emerald-400 text-slate-950" : "bg-white/5 text-white"}`}
+          >
+            <span className="block text-3xl">+</span>
+            <span className="mt-2 block text-base font-black">Bygg basis</span>
+            <span className="text-xs opacity-80">Skann hjemme</span>
+          </button>
+
+          <button
             onClick={() => setMode("receipt")}
             className={`rounded-2xl px-3 py-4 text-left transition ${mode === "receipt" ? "bg-sky-300 text-slate-950" : "bg-white/5 text-white"}`}
           >
             <span className="block text-3xl">▤</span>
             <span className="mt-2 block text-base font-black">Kvittering</span>
-            <span className="text-xs opacity-80">Del priser</span>
-          </button>
-
-          <button
-            onClick={() => setMode("in")}
-            className={`rounded-2xl px-3 py-4 text-left transition ${mode === "in" ? "bg-emerald-400 text-slate-950" : "bg-white/5 text-white"}`}
-          >
-            <span className="block text-3xl">+</span>
-            <span className="mt-2 block text-base font-black">Inn</span>
-            <span className="text-xs opacity-80">Lager</span>
+            <span className="text-xs opacity-80">Etter handel</span>
           </button>
 
           <button
@@ -1462,15 +1462,15 @@ export default function MobileScanPage() {
             className={`rounded-2xl px-3 py-4 text-left transition ${mode === "out" ? "bg-amber-300 text-slate-950" : "bg-white/5 text-white"}`}
           >
             <span className="block text-3xl">−</span>
-            <span className="mt-2 block text-base font-black">Ut</span>
-            <span className="text-xs opacity-80">Brukt</span>
+            <span className="mt-2 block text-base font-black">Brukt opp</span>
+            <span className="text-xs opacity-80">Ned lager</span>
           </button>
 
         </section>
 
         <section className="mt-4 rounded-3xl bg-white/8 p-4 text-sm font-semibold leading-6 text-slate-200 ring-1 ring-white/10">
-          <p className="text-base font-black text-white">Slik bidrar du enklest</p>
-          <p className="mt-1">Ta bilde av kvitteringen. Matmakt finner basisvarene, foreslår butikk og deler bare prisene som virker trygge.</p>
+          <p className="text-base font-black text-white">Enkleste start: skann hjemme</p>
+          <p className="mt-1">Skann én og én vare hjemme. Matmakt legger varen på lager og gjør den til basisvare automatisk. En basisvare blir værende helt til du selv velger den bort.</p>
         </section>
 
         <section className="relative mt-5 overflow-hidden rounded-3xl bg-black ring-1 ring-white/10">
@@ -1493,7 +1493,7 @@ export default function MobileScanPage() {
             </div>
           )}
           <div className="absolute left-4 top-4 rounded-full bg-slate-950/75 px-4 py-2 text-sm font-bold">
-            {cameraReady ? `Klar: ${mobileModeText(mode)}` : cameraPaused ? "Kameraet er pauset" : "Starter kamera..."}
+            {cameraReady ? (mode === "in" ? "Klar: skann hjemmevare" : `Klar: ${mobileModeText(mode)}`) : cameraPaused ? "Kameraet er pauset" : "Starter kamera..."}
           </div>
           {cameraPaused ? (
             <div className="absolute inset-0 grid place-items-center bg-slate-950/75 px-6 text-center">
@@ -1549,13 +1549,13 @@ export default function MobileScanPage() {
           <section className="mt-4 rounded-3xl bg-emerald-300 p-4 text-slate-950 shadow-2xl">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.18em] opacity-70">Priser funnet</p>
+                <p className="text-sm font-semibold uppercase tracking-[0.18em] opacity-70">Kvittering matchet</p>
                 <p className="mt-1 text-xl font-black">
                   {receiptImportPreview.needsStoreConfirmation ? "Velg butikk" : receiptImportPreview.storeName ?? "Butikk valgt"}
                   {receiptImportPreview.receiptDate ? ` · ${receiptImportPreview.receiptDate}` : ""}
                 </p>
                 <p className="mt-1 text-sm font-semibold opacity-80">
-                  {receiptImportPreview.linesRead} linjer lest · {receiptImportPreview.secureMatches?.length ?? 0} sikre matcher · {receiptImportPreview.reviewMatches?.length ?? 0} må kontrolleres · {receiptImportPreview.unmatchedLines?.length ?? 0} ikke matchet
+                  {receiptImportPreview.linesRead} linjer lest · {receiptImportPreview.secureMatches?.length ?? 0} matchet mot basisvarer · {receiptImportPreview.reviewMatches?.length ?? 0} bør sjekkes · {receiptImportPreview.unmatchedLines?.length ?? 0} kan skannes inn som basisvare
                 </p>
                 {receiptImportPreview.reason ? <p className="mt-1 text-xs font-bold opacity-75">{receiptImportPreview.reason}</p> : null}
               </div>
@@ -1582,7 +1582,7 @@ export default function MobileScanPage() {
 
             <div className="mt-3 grid gap-3 md:grid-cols-3">
               <div className="rounded-2xl bg-white/60 p-3">
-                <p className="text-xs font-black uppercase tracking-wide opacity-70">Kan deles nå</p>
+                <p className="text-xs font-black uppercase tracking-wide opacity-70">Basispriser</p>
                 <p className="mt-1 text-3xl font-black">{receiptImportPreview.secureMatches?.length ?? 0}</p>
               </div>
               <div className="rounded-2xl bg-white/60 p-3">
@@ -1590,7 +1590,7 @@ export default function MobileScanPage() {
                 <p className="mt-1 text-3xl font-black">{receiptImportPreview.reviewMatches?.length ?? 0}</p>
               </div>
               <div className="rounded-2xl bg-white/60 p-3">
-                <p className="text-xs font-black uppercase tracking-wide opacity-70">Ikke matchet</p>
+                <p className="text-xs font-black uppercase tracking-wide opacity-70">Skann som basis</p>
                 <p className="mt-1 text-3xl font-black">{receiptImportPreview.remainingLines?.length ?? 0}</p>
               </div>
             </div>
@@ -1603,14 +1603,14 @@ export default function MobileScanPage() {
                     <span className="shrink-0 font-black">{formatReceiptPrice(match.line?.unitPrice ?? 0)} kr/stk</span>
                   </div>
                   <p className="mt-1 text-xs font-semibold opacity-70">
-                    → {match.product?.name ?? "Basisvare"} · {Math.round(match.confidence * 100)} % sikker
+                    → basisvare: {match.product?.name ?? "Basisvare"} · {Math.round(match.confidence * 100)} % sikker
                   </p>
                 </div>
               ))}
               {(receiptImportPreview.secureMatches?.length ?? 0) > 8 ? (
                 <p className="text-xs font-bold opacity-70">Viser 8 av {receiptImportPreview.secureMatches?.length} sikre matcher.</p>
               ) : null}
-              {!(receiptImportPreview.secureMatches?.length ?? 0) ? <p className="text-sm font-bold opacity-70">Ingen trygge treff funnet. Du kan fortsatt skanne strekkoder for varene etterpå.</p> : null}
+              {!(receiptImportPreview.secureMatches?.length ?? 0) ? <p className="text-sm font-bold opacity-70">Ingen trygge treff funnet. Skann strekkodene på varene etterpå, så blir de basisvarer.</p> : null}
             </div>
 
             <button
@@ -1618,7 +1618,7 @@ export default function MobileScanPage() {
               disabled={receiptProcessing || (receiptImportPreview.needsStoreConfirmation && !receiptImportStoreKey)}
               className="mt-3 w-full rounded-2xl bg-slate-950 px-4 py-4 text-base font-black text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Del trygge priser
+              Lagre matchede basispriser
             </button>
           </section>
         ) : null}
@@ -1627,10 +1627,10 @@ export default function MobileScanPage() {
           <section className="mt-4 rounded-3xl bg-sky-300 p-4 text-slate-950 shadow-2xl">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.18em] opacity-70">Kvittering som må kobles</p>
+                <p className="text-sm font-semibold uppercase tracking-[0.18em] opacity-70">Skann varer som mangler</p>
                 <p className="mt-1 text-xl font-black">{receiptCache.storeName} · {activeReceiptLines.length} linjer igjen</p>
                 <p className="mt-1 text-sm font-semibold opacity-80">Utløper om ca. {receiptMinutesLeft} min.</p>
-                <p className="mt-1 text-xs font-bold opacity-70">Skann strekkoden på linjene som ikke ble matchet automatisk.</p>
+                <p className="mt-1 text-xs font-bold opacity-70">Skann strekkoden på varene som ikke ble matchet. Da blir de basisvarer og kobles til kvitteringen. De forblir basisvarer til du velger dem bort.</p>
               </div>
               <button onClick={clearReceiptCache} className="rounded-full bg-slate-950 px-4 py-2 text-sm font-black text-white">
                 Tøm
