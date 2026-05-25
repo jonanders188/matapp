@@ -62,6 +62,14 @@ export default function OnboardingPage() {
     return `Bli med i ${name} på Matmakt. Logg inn med e-postadressen din, så kan du skanne varer og kvitteringer for husholdningen.`;
   }, [payload?.household.name]);
 
+  async function ensureHousehold() {
+    const response = await authFetch("/api/onboarding/ensure-household", { method: "POST" });
+    const result = await response.json().catch(() => null) as { error?: string } | null;
+    if (!response.ok) {
+      throw new Error(result?.error ?? "Kunne ikke klargjøre husholdningen.");
+    }
+  }
+
   async function loadHousehold() {
     setLoading(true);
     setError(null);
@@ -78,7 +86,18 @@ export default function OnboardingPage() {
       setPayload(data);
       setHouseholdName(data?.household.name ?? "");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Kunne ikke hente husholdningen.");
+      const message = err instanceof Error ? err.message : "Kunne ikke hente husholdningen.";
+      if (message.toLowerCase().includes("ikke medlem") || message.toLowerCase().includes("husholdning")) {
+        try {
+          await ensureHousehold();
+          await loadHousehold();
+          return;
+        } catch (ensureError) {
+          setError(ensureError instanceof Error ? ensureError.message : "Kunne ikke klargjøre husholdningen.");
+        }
+      } else {
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
