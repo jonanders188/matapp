@@ -113,7 +113,6 @@ export default function AdminPage() {
   const [monthlyBudget, setMonthlyBudget] = useState("0");
   const [newEmail, setNewEmail] = useState("");
   const [newDisplayName, setNewDisplayName] = useState("");
-  const [newRole, setNewRole] = useState<MemberRole>("member");
   const [stores, setStores] = useState<StorePreference[]>([]);
   const [storesLoading, setStoresLoading] = useState(false);
   const [priceSourcePreferences, setPriceSourcePreferences] = useState<PriceSourcePreferences | null>(null);
@@ -222,7 +221,7 @@ export default function AdminPage() {
       const response = await authFetch("/api/admin/members", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: newEmail, display_name: newDisplayName, role: newRole })
+        body: JSON.stringify({ email: newEmail, display_name: newDisplayName, role: "member" })
       });
       const result = await response.json().catch(() => null);
 
@@ -232,8 +231,7 @@ export default function AdminPage() {
 
       setNewEmail("");
       setNewDisplayName("");
-      setNewRole("member");
-      setMessage("Medlemmet er lagt til. Be personen logge inn med magic link.");
+      setMessage(result?.data?.message ?? "Invitasjon sendt. Personen blir medlem når invitasjonen godkjennes.");
       await loadAdmin();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kunne ikke legge til medlem");
@@ -526,8 +524,8 @@ export default function AdminPage() {
               </section>
 
               <section className="card p-5">
-                <h2 className="section-title">Legg til bruker</h2>
-                <p className="section-subtitle">Brukeren opprettes i Supabase Auth hvis e-posten ikke finnes. Personen kan deretter logge inn med magic link.</p>
+                <h2 className="section-title">Inviter medlem</h2>
+                <p className="section-subtitle">Send invitasjon på e-post. Personen blir først medlem når invitasjonen godkjennes. Barn og medlem har samme tilgang foreløpig.</p>
 
                 <form onSubmit={addMember} className="mt-5 space-y-4">
                   <label className="block text-sm font-medium text-slate-700">
@@ -553,19 +551,13 @@ export default function AdminPage() {
 
                   <label className="block text-sm font-medium text-slate-700">
                     Rolle
-                    <select
-                      value={newRole}
-                      onChange={(event) => setNewRole(event.target.value as MemberRole)}
-                      className="mt-2 w-full rounded-xl border border-line px-4 py-3 text-sm outline-none focus:border-brand"
-                    >
-                      {roles.map((role) => (
-                        <option key={role.value} value={role.value}>{role.label}</option>
-                      ))}
-                    </select>
+                    <div className="mt-2 rounded-xl border border-line bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
+                      Medlem. Admin kan endres etter at invitasjonen er godtatt.
+                    </div>
                   </label>
 
                   <button disabled={saving === "add-member" || !newEmail.trim()} className="w-full rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
-                    {saving === "add-member" ? "Legger til..." : "Legg til bruker"}
+                    {saving === "add-member" ? "Sender invitasjon..." : "Send invitasjon"}
                   </button>
                 </form>
               </section>

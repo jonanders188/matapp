@@ -59,8 +59,22 @@ export default function OnboardingPage() {
   const isAdmin = payload?.currentRole === "admin";
   const inviteText = useMemo(() => {
     const name = payload?.household.name || "husholdningen min";
-    return `Bli med i ${name} på Matmakt. Åpne invitasjonen på e-post og logg inn med samme e-postadresse, så blir du koblet til husholdningen.`;
+    return `Bli med i ${name} på Matmakt. Åpne invitasjonen på e-post og godkjenn medlemskap med samme e-postadresse.`;
   }, [payload?.household.name]);
+
+  async function acceptInvitation(token: string) {
+    const response = await authFetch("/api/household/invitations/accept", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token })
+    });
+    const result = await response.json().catch(() => null) as { data?: { household_id?: string }; error?: string } | null;
+    if (!response.ok) throw new Error(result?.error ?? "Kunne ikke godkjenne invitasjonen.");
+    if (result?.data?.household_id) {
+      window.localStorage.setItem("matmakt.activeHouseholdId", result.data.household_id);
+      setMessage("Invitasjonen er godtatt. Du er nå koblet til husholdningen.");
+    }
+  }
 
   async function ensureHousehold() {
     const response = await authFetch("/api/onboarding/ensure-household", { method: "POST" });
@@ -149,7 +163,7 @@ export default function OnboardingPage() {
       if (!response.ok) throw new Error(result?.error ?? "Kunne ikke sende invitasjon.");
       setNewEmail("");
       setNewDisplayName("");
-      setMessage(result?.data?.message ?? "Invitasjon sendt. Personen kan logge inn med e-post og blir koblet til husholdningen.");
+      setMessage(result?.data?.message ?? "Invitasjon sendt. Personen blir medlem når invitasjonen godkjennes.");
       await loadHousehold();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kunne ikke sende invitasjon.");
@@ -168,11 +182,23 @@ export default function OnboardingPage() {
   }
 
   useEffect(() => {
-    const householdId = new URLSearchParams(window.location.search).get("household_id");
-    if (householdId) {
-      window.localStorage.setItem("matmakt.activeHouseholdId", householdId);
+    const params = new URLSearchParams(window.location.search);
+    const householdId = params.get("household_id");
+    const inviteToken = params.get("invite_token");
+
+    async function boot() {
+      if (inviteToken) {
+        await acceptInvitation(inviteToken);
+      } else if (householdId) {
+        window.localStorage.setItem("matmakt.activeHouseholdId", householdId);
+      }
+      await loadHousehold();
     }
-    loadHousehold().catch(() => undefined);
+
+    boot().catch((err) => {
+      setError(err instanceof Error ? err.message : "Kunne ikke åpne onboarding.");
+      setLoading(false);
+    });
   }, []);
 
   return (
@@ -229,7 +255,7 @@ export default function OnboardingPage() {
             <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">2. Medlemmer</p>
             <h2 className="mt-2 text-2xl font-black text-slate-950">Inviter husholdningen</h2>
             <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">
-              Send invitasjon på e-post. Personen trenger bare å åpne lenken og logge inn; da er de koblet til husholdningen.
+              Send invitasjon på e-post. Personen må åpne lenken og godkjenne selv før de blir medlem av husholdningen.
             </p>
             <form onSubmit={addMember} className="mt-4 space-y-3">
               <input

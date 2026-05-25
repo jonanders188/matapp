@@ -2,15 +2,17 @@ import { NextResponse } from "next/server";
 import { apiErrorResponse, requireCurrentHousehold, type HouseholdRole } from "@/lib/current-household";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
 
-const roles: HouseholdRole[] = ["admin", "member"];
+const roles: HouseholdRole[] = ["member"];
 
 function requireAdminRole(role: string) {
   if (role !== "admin") {
-    throw Object.assign(new Error("Kun admin kan gjøre dette"), { status: 403 });
+    throw Object.assign(new Error("Kun admin kan invitere til husholdningen"), { status: 403 });
   }
 }
 
 function parseRole(value: unknown): HouseholdRole {
+  // Foreløpig inviteres alle nye husholdningsmedlemmer som medlem.
+  // Admin kan endre rollen etter at invitasjonen er godtatt.
   return roles.includes(value as HouseholdRole) ? (value as HouseholdRole) : "member";
 }
 
@@ -27,6 +29,13 @@ function appOrigin(request: Request) {
   if (forwardedHost) return `${forwardedProto}://${forwardedHost}`;
 
   return new URL(request.url).origin;
+}
+
+function inviteRedirectUrl(request: Request, householdId: string, token: string) {
+  const url = new URL("/onboarding", appOrigin(request));
+  url.searchParams.set("invite_token", token);
+  url.searchParams.set("household_id", householdId);
+  return url.toString();
 }
 
 async function allowInvitedEmailInClosedBeta(email: string, invitedBy: string) {
@@ -62,23 +71,74 @@ async function findUserByEmail(email: string) {
   return null;
 }
 
-async function inviteOrFindUser(email: string, request: Request, householdId: string) {
-  const supabase = getSupabaseAdmin();
-  const existing = await findUserByEmail(email);
-  if (existing) return { user: existing, invited: false };
+function newInviteToken() {
+  return `${crypto.randomUUID()}-${crypto.randomUUID()}`.replace(/-/g, "");
+}
 
-  const { data, error } = await supabase.auth.admin.inviteUserByEmail(email, {
-    redirectTo: `${appOrigin(request)}/onboarding?household_id=${encodeURIComponent(householdId)}`,
+async function createPendingInvitation(input: {
+  householdId: string;
+  email: string;
+  displayName: string;
+  role: HouseholdRole;
+  invitedBy: string;
+}) {
+  const supabase = getSupabaseAdmin();
+  const token = newInviteToken();
+  const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString();
+
+  const { data, error } = await supabase
+    .from("household_invitations")
+    .upsert(
+      {
+        household_id: input.householdId,
+        email: input.email,
+        display_name: input.displayName,
+        role: input.role,
+        invited_by: input.invitedBy,
+        token,
+        status: "pending",
+        expires_at: expiresAt,
+        accepted_at: null
+      },
+      { onConflict: "household_id,email" }
+    )
+    .select("id, household_id, email, display_name, role, token, status, expires_at, created_at")
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+async function sendInvitationEmail(email: string, request: Request, householdId: string, token: string) {
+  const supabase = getSupabaseAdmin();
+  const redirectTo = inviteRedirectUrl(request, householdId, token);
+  const existing = await findUserByEmail(email);
+
+  if (existing) {
+    // Eksisterende brukere må fortsatt godkjenne invitasjonen selv.
+    // Magic link sender e-post og lander brukeren på invitasjonen.
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: redirectTo,
+        shouldCreateUser: false
+      }
+    });
+    if (error) throw error;
+    return { existingUser: true, sent: true };
+  }
+
+  const { error } = await supabase.auth.admin.inviteUserByEmail(email, {
+    redirectTo,
     data: {
       invited_from: "matmakt_household",
-      household_id: householdId
+      household_id: householdId,
+      invite_token: token
     }
   });
 
   if (error) throw error;
-  if (!data.user) throw new Error("Kunne ikke sende invitasjon");
-
-  return { user: data.user, invited: true };
+  return { existingUser: false, sent: true };
 }
 
 export async function POST(request: Request) {
@@ -95,33 +155,50 @@ export async function POST(request: Request) {
     const role = parseRole(body.role);
     const displayName = String(body.display_name ?? "").trim() || displayNameFromEmail(email);
     const supabase = getSupabaseAdmin();
-    const { user, invited } = await inviteOrFindUser(email, request, current.householdId);
+
+    const existingUser = await findUserByEmail(email);
+    if (existingUser) {
+      const { data: existingMembership, error: membershipError } = await supabase
+        .from("household_members")
+        .select("id")
+        .eq("household_id", current.householdId)
+        .eq("user_id", existingUser.id)
+        .maybeSingle();
+
+      if (membershipError) throw membershipError;
+      if (existingMembership?.id) {
+        return NextResponse.json({
+          data: {
+            email,
+            invited: false,
+            alreadyMember: true,
+            message: "Brukeren er allerede medlem av denne husholdningen."
+          }
+        });
+      }
+    }
+
     await allowInvitedEmailInClosedBeta(email, current.userId);
 
-    const { data, error } = await supabase
-      .from("household_members")
-      .upsert(
-        {
-          household_id: current.householdId,
-          user_id: user.id,
-          display_name: displayName,
-          role
-        },
-        { onConflict: "household_id,user_id" }
-      )
-      .select("id, household_id, user_id, display_name, role, created_at")
-      .single();
+    const invitation = await createPendingInvitation({
+      householdId: current.householdId,
+      email,
+      displayName,
+      role,
+      invitedBy: current.userId
+    });
 
-    if (error) throw error;
+    const mail = await sendInvitationEmail(email, request, current.householdId, invitation.token);
 
     return NextResponse.json({
       data: {
-        ...data,
-        email: user.email ?? email,
-        invited,
-        message: invited
-          ? "Invitasjon er sendt på e-post. Personen blir medlem når de logger inn."
-          : "Medlemmet finnes allerede og er lagt til denne husholdningen. Be personen logge inn og velge riktig husholdning hvis de har flere."
+        id: invitation.id,
+        email,
+        invited: true,
+        existingUser: mail.existingUser,
+        message: mail.existingUser
+          ? "Invitasjon er sendt. Brukeren må åpne e-posten og godkjenne medlemskap i denne husholdningen."
+          : "Invitasjon er sendt på e-post. Personen blir medlem når invitasjonen godkjennes."
       }
     });
   } catch (error) {
