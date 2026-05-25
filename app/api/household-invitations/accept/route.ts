@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     if (userError || !userResult.user?.email) throw apiError("Ugyldig eller utloept innlogging", 401);
 
     const body = (await request.json()) as { token?: unknown };
-    const token = String(body.token ?? "").trim();
+    const token = decodeURIComponent(String(body.token ?? "")).trim();
     if (!token) throw apiError("Invitasjonslenken mangler token", 400);
 
     const { data: invitation, error: invitationError } = await supabase
@@ -39,7 +39,11 @@ export async function POST(request: Request) {
       .maybeSingle();
 
     if (invitationError) throw invitationError;
-    if (!invitation) throw apiError("Invitasjonen finnes ikke eller er utloept", 404);
+    if (!invitation) {
+      // Mer presis feilmelding ved feilsoking. Dette skjer typisk hvis man klikker
+      // en gammel invitasjonslenke etter at medlemmet er fjernet og invitert paa nytt.
+      throw apiError("Invitasjonen finnes ikke. Be om en ny invitasjon og bruk den nyeste e-posten.", 404);
+    }
     if (String(invitation.status ?? "pending") !== "pending") throw apiError("Invitasjonen er allerede brukt", 409);
     if (invitation.expires_at && new Date(String(invitation.expires_at)).getTime() < Date.now()) {
       throw apiError("Invitasjonen er utloept", 410);

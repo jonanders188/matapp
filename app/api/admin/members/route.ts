@@ -129,26 +129,50 @@ export async function POST(request: Request) {
     const token = inviteToken();
     const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
 
+    // Re-invitasjon skal alltid lage en fersk lenke.
+    // Tidligere brukte vi upsert paa (household_id, email). Hvis en bruker var medlem,
+    // ble fjernet og saa invitert paa nytt, kunne gammel invitasjonsrad/status/token
+    // bli liggende og gi "invitasjonen finnes ikke eller er utloept" ved klikk.
+    // For MVP er det tryggest aa erstatte eventuell gammel invitasjon for samme
+    // husholdning/e-post med en helt ny pending-invitasjon.
+    const { error: deleteOldInviteError } = await supabase
+      .from("household_invitations")
+      .delete()
+      .eq("household_id", current.householdId)
+      .eq("email", email);
+
+    if (deleteOldInviteError) throw deleteOldInviteError;
+
     const { data: invitation, error: invitationError } = await supabase
       .from("household_invitations")
-      .upsert(
-        {
-          household_id: current.householdId,
-          email,
-          display_name: displayName,
-          role: "member",
-          token,
-          status: "pending",
-          invited_by_user_id: current.userId,
-          expires_at: expiresAt,
-          updated_at: new Date().toISOString()
-        },
-        { onConflict: "household_id,email" }
-      )
+      .insert({
+        household_id: current.householdId,
+        email,
+        display_name: displayName,
+        role: "member",
+        token,
+        status: "pending",
+        invited_by_user_id: current.userId,
+        expires_at: expiresAt,
+        updated_at: new Date().toISOString()
+      })
       .select("id, household_id, email, display_name, role, token, status, expires_at, created_at")
       .single();
 
     if (invitationError) throw invitationError;
+
+    // Ekstra sikkerhet: bekreft at tokenet som skal sendes faktisk finnes i databasen.
+    const { data: savedInvitation, error: savedInvitationError } = await supabase
+      .from("household_invitations")
+      .select("id, token, status, expires_at")
+      .eq("id", invitation.id)
+      .eq("token", invitation.token)
+      .maybeSingle();
+
+    if (savedInvitationError) throw savedInvitationError;
+    if (!savedInvitation) {
+      throw Object.assign(new Error("Invitasjonen ble ikke lagret riktig. Proev igjen."), { status: 500 });
+    }
 
     // Lukket beta: inviterte e-poster skal kunne logge inn for aa godkjenne invitasjonen.
     await supabase
