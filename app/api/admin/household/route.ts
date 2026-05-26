@@ -43,6 +43,15 @@ export async function GET(request: Request) {
     if (householdResult.error) throw householdResult.error;
     if (membersResult.error) throw membersResult.error;
 
+    const invitationsResult = await supabase
+      .from("household_invitations")
+      .select("id, email, display_name, role, status, expires_at, created_at")
+      .eq("household_id", current.householdId)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false });
+
+    if (invitationsResult.error) throw invitationsResult.error;
+
     const members = await Promise.all(
       (membersResult.data ?? []).map(async (member) => ({
         ...member,

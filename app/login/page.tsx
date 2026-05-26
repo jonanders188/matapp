@@ -52,7 +52,41 @@ function LoginContent() {
       setError(signUpError.message);
       return;
     }
-    setMessage("Sjekk e-posten din for å bekrefte kontoen.");
+    setMessage("Kontoen er opprettet. Sjekk e-posten din for å bekrefte kontoen. Sjekk også søppelpost hvis den ikke kommer frem.");
+  }
+
+  async function resendSignupConfirmation() {
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+    const supabase = getSupabaseBrowserClient();
+    const { error: resendError } = await supabase.auth.resend({
+      type: "signup",
+      email,
+      options: { emailRedirectTo: `${window.location.origin}${safeNext()}` }
+    });
+    setLoading(false);
+    if (resendError) {
+      setError(resendError.message);
+      return;
+    }
+    setMessage("Ny bekreftelsesmail er sendt. Sjekk også søppelpost.");
+  }
+
+  async function sendPasswordReset() {
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+    const supabase = getSupabaseBrowserClient();
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/set-password?next=${encodeURIComponent(safeNext())}`
+    });
+    setLoading(false);
+    if (resetError) {
+      setError(resetError.message);
+      return;
+    }
+    setMessage("Vi har sendt en lenke for å sette eller endre passord. Sjekk også søppelpost.");
   }
 
   async function sendMagicLink() {
@@ -95,6 +129,10 @@ function LoginContent() {
           <button disabled={loading || !email || !password} className="w-full rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">{loading ? "Logger inn..." : "Logg inn med passord"}</button>
           <button type="button" onClick={signUpWithPassword} disabled={loading || !email || !password} className="w-full rounded-xl border border-line px-4 py-3 text-sm font-semibold text-slate-700 disabled:opacity-60">Opprett konto med passord</button>
           <button type="button" onClick={sendMagicLink} disabled={loading || !email} className="w-full rounded-xl border border-line px-4 py-3 text-sm font-semibold text-brand disabled:opacity-60">Send magic link</button>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <button type="button" onClick={resendSignupConfirmation} disabled={loading || !email} className="rounded-xl border border-line px-4 py-3 text-xs font-semibold text-slate-600 disabled:opacity-60">Send bekreftelse på nytt</button>
+            <button type="button" onClick={sendPasswordReset} disabled={loading || !email} className="rounded-xl border border-line px-4 py-3 text-xs font-semibold text-slate-600 disabled:opacity-60">Sett / glemt passord</button>
+          </div>
         </form>
       </section>
     </main>

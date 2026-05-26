@@ -24,6 +24,17 @@ type Member = {
   is_current_user?: boolean;
 };
 
+
+type PendingInvitation = {
+  id: string;
+  email: string;
+  display_name: string | null;
+  role: MemberRole | string | null;
+  status: string | null;
+  expires_at: string | null;
+  created_at: string | null;
+};
+
 type Invitation = {
   id: string;
   email: string;
