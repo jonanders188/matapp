@@ -73,7 +73,7 @@ export async function GET(request: Request) {
     if (staleInvitationIds.length > 0) {
       const { error: staleUpdateError } = await supabase
         .from("household_invitations")
-        .update({ status: "accepted", accepted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .update({ status: "accepted" })
         .in("id", staleInvitationIds);
 
       if (staleUpdateError) {

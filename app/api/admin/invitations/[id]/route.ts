@@ -146,10 +146,10 @@ async function handleInvitationAction(request: Request, context: RouteContext, f
     if (action === "cancel") {
       const { data, error } = await supabase
         .from("household_invitations")
-        .update({ status: "cancelled", updated_at: new Date().toISOString() })
+        .update({ status: "cancelled" })
         .eq("id", id)
         .eq("household_id", current.householdId)
-        .select("id, email, status, expires_at, updated_at")
+        .select("id, email, status, expires_at")
         .single();
 
       if (error) throw error;
@@ -160,10 +160,10 @@ async function handleInvitationAction(request: Request, context: RouteContext, f
     const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
     const { data: updatedInvitation, error: updateError } = await supabase
       .from("household_invitations")
-      .update({ token, expires_at: expiresAt, updated_at: new Date().toISOString() })
+      .update({ token, expires_at: expiresAt, status: "pending" })
       .eq("id", id)
       .eq("household_id", current.householdId)
-      .select("id, household_id, email, display_name, role, status, token, expires_at, created_at, updated_at")
+      .select("id, household_id, email, display_name, role, status, token, expires_at, created_at")
       .single();
 
     if (updateError) throw updateError;

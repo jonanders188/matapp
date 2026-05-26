@@ -27,6 +27,21 @@ function invitationExpired(expiresAt: string | null | undefined) {
   return Boolean(expiresAt && new Date(expiresAt).getTime() < Date.now());
 }
 
+async function getHouseholdName(householdId: string) {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("households")
+    .select("name")
+    .eq("id", householdId)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("[api/household/invitations/accept] household name lookup", error);
+  }
+
+  return String(data?.name ?? "").trim() || null;
+}
+
 type InvitationRow = {
   id: string;
   household_id: string;
@@ -35,14 +50,7 @@ type InvitationRow = {
   role: string | null;
   status: string | null;
   expires_at: string | null;
-  households?: { name?: string | null } | { name?: string | null }[] | null;
 };
-
-function householdNameFromInvitation(invitation: InvitationRow) {
-  const households = invitation.households;
-  if (Array.isArray(households)) return households[0]?.name ?? null;
-  return households?.name ?? null;
-}
 
 export async function GET(request: Request) {
   try {
@@ -52,7 +60,7 @@ export async function GET(request: Request) {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from("household_invitations")
-      .select("id, household_id, email, display_name, role, status, expires_at, households(name)")
+      .select("id, household_id, email, display_name, role, status, expires_at")
       .eq("token", token)
       .maybeSingle<InvitationRow>();
 
@@ -61,10 +69,13 @@ export async function GET(request: Request) {
       return jsonError("Kunne ikke hente invitasjonen", 500);
     }
 
-    if (!data) return jsonError("Invitasjonen finnes ikke. Be om en ny invitasjon.", 404);
+    if (!data) {
+      return jsonError("Invitasjonen finnes ikke. Bruk den nyeste invitasjonsmailen, eller be om ny invitasjon.", 404);
+    }
 
     const expired = invitationExpired(data.expires_at);
     const status = expired ? "expired" : (data.status ?? "pending");
+    const householdName = await getHouseholdName(data.household_id);
 
     return NextResponse.json({
       data: {
@@ -74,7 +85,7 @@ export async function GET(request: Request) {
         status,
         expires_at: data.expires_at,
         household_id: data.household_id,
-        household_name: householdNameFromInvitation(data)
+        household_name: householdName
       }
     });
   } catch (error) {
@@ -103,16 +114,18 @@ export async function POST(request: Request) {
 
     const { data: invitation, error: invitationError } = await supabase
       .from("household_invitations")
-      .select("id, household_id, email, display_name, role, status, expires_at, accepted_by_user_id")
+      .select("id, household_id, email, display_name, role, status, expires_at")
       .eq("token", token)
-      .maybeSingle();
+      .maybeSingle<InvitationRow>();
 
     if (invitationError) {
       console.error("[api/household/invitations/accept] POST lookup", invitationError);
       return jsonError("Kunne ikke hente invitasjonen", 500);
     }
 
-    if (!invitation) return jsonError("Invitasjonen finnes ikke. Be om en ny invitasjon.", 404);
+    if (!invitation) {
+      return jsonError("Invitasjonen finnes ikke. Bruk den nyeste invitasjonsmailen, eller be om ny invitasjon.", 404);
+    }
 
     const invitationEmail = normalizeEmail(invitation.email);
     if (invitationEmail !== userEmail) {
@@ -122,7 +135,7 @@ export async function POST(request: Request) {
     if (invitationExpired(invitation.expires_at)) {
       await supabase
         .from("household_invitations")
-        .update({ status: "expired", updated_at: new Date().toISOString() })
+        .update({ status: "expired" })
         .eq("id", invitation.id)
         .eq("status", "pending")
         .then(() => undefined, () => undefined);
@@ -193,13 +206,10 @@ export async function POST(request: Request) {
       }
     }
 
+    // Keep this update minimal so it works even before optional timestamp columns are present.
     const { error: acceptedError } = await supabase
       .from("household_invitations")
-      .update({
-        status: "accepted",
-        accepted_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
+      .update({ status: "accepted" })
       .eq("id", invitation.id);
 
     if (acceptedError) {
