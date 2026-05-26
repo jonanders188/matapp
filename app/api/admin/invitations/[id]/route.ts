@@ -188,9 +188,15 @@ async function closeIfAlreadyMember(invitation: { id: string; household_id: stri
 
   if (!membership?.id) return false;
 
+  const now = new Date().toISOString();
   await supabase
     .from("household_invitations")
-    .update({ status: "accepted" })
+    .update({
+      status: "accepted",
+      accepted_user_id: invitedUser.id,
+      accepted_at: now,
+      updated_at: now
+    })
     .eq("id", invitation.id);
 
   return true;
@@ -222,10 +228,15 @@ async function handleInvitationAction(request: Request, context: RouteContext, f
     const supabase = getSupabaseAdmin();
 
     if (action === "cancel") {
+      if (invitation.status !== "pending") {
+        return jsonError("Bare ventende invitasjoner kan avbrytes", 409);
+      }
+
       const { error: updateError } = await supabase
         .from("household_invitations")
-        .update({ status: "cancelled" })
-        .eq("id", invitation.id);
+        .update({ status: "cancelled", updated_at: new Date().toISOString() })
+        .eq("id", invitation.id)
+        .eq("status", "pending");
 
       if (updateError) return jsonError("Kunne ikke avbryte invitasjonen", 500, updateError);
 
@@ -246,8 +257,9 @@ async function handleInvitationAction(request: Request, context: RouteContext, f
 
     const { error: updateError } = await supabase
       .from("household_invitations")
-      .update({ token, expires_at: expiresAt, status: "pending" })
-      .eq("id", invitation.id);
+      .update({ token, expires_at: expiresAt, status: "pending", updated_at: new Date().toISOString() })
+      .eq("id", invitation.id)
+      .eq("status", "pending");
 
     if (updateError) return jsonError("Kunne ikke oppdatere invitasjonen", 500, updateError);
 

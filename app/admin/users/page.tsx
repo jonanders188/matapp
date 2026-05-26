@@ -10,6 +10,14 @@ type HouseholdSummary = {
   role: "admin" | "member";
 };
 
+type UserMetrics = {
+  basis_product_count: number;
+  scanned_price_count: number;
+  manual_price_count: number;
+  receipt_price_count: number;
+  user_registered_price_count: number;
+};
+
 type AdminUser = {
   id: string;
   email: string;
@@ -18,6 +26,7 @@ type AdminUser = {
   confirmed_at: string | null;
   household_count: number;
   households: HouseholdSummary[];
+  metrics: UserMetrics;
   can_delete: boolean;
 };
 
@@ -26,6 +35,7 @@ type UsersPayload = {
   page: number;
   perPage: number;
   totalApprox: number;
+  metricsWarning?: string | null;
 };
 
 function dateLabel(value: string | null) {
@@ -42,6 +52,16 @@ function householdChipLabel(household: HouseholdSummary) {
   return `${household.name}${household.role === "admin" ? " · admin" : ""}`;
 }
 
+function userMetrics(user: AdminUser): UserMetrics {
+  return user.metrics ?? {
+    basis_product_count: 0,
+    scanned_price_count: 0,
+    manual_price_count: 0,
+    receipt_price_count: 0,
+    user_registered_price_count: 0
+  };
+}
+
 export default function SystemUsersPage() {
   const [data, setData] = useState<UsersPayload | null>(null);
   const [query, setQuery] = useState("");
@@ -53,6 +73,8 @@ export default function SystemUsersPage() {
   const users = data?.users ?? [];
   const withoutHousehold = useMemo(() => users.filter((user) => user.household_count === 0).length, [users]);
   const withHousehold = useMemo(() => users.filter((user) => user.household_count > 0).length, [users]);
+  const totalBasisProducts = useMemo(() => users.reduce((sum, user) => sum + userMetrics(user).basis_product_count, 0), [users]);
+  const totalUserPrices = useMemo(() => users.reduce((sum, user) => sum + userMetrics(user).user_registered_price_count, 0), [users]);
 
   async function loadUsers(search = query) {
     setLoading(true);
@@ -110,10 +132,11 @@ export default function SystemUsersPage() {
           </p>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-3">
+        <section className="grid gap-4 md:grid-cols-4">
           <StatCard title="Viste brukere" value={String(users.length)} tone="blue" subtitle={data ? `Side ${data.page}` : "Laster"} />
           <StatCard title="Med husholdning" value={String(withHousehold)} tone="green" subtitle="Kan ikke slettes her" />
-          <StatCard title="Uten husholdning" value={String(withoutHousehold)} tone="amber" subtitle="Kan slettes av sysadmin" />
+          <StatCard title="Basisprodukter" value={String(totalBasisProducts)} tone="purple" subtitle="På viste brukere" />
+          <StatCard title="Egne priser" value={String(totalUserPrices)} tone="amber" subtitle="Skann, manuelt og kvittering" />
         </section>
 
         <section className="rounded-3xl border border-line bg-white p-4 shadow-soft">
@@ -145,12 +168,14 @@ export default function SystemUsersPage() {
           </div>
 
           {notice ? <p className="mt-4 rounded-2xl bg-emerald-50 p-3 text-sm font-bold text-brand">{notice}</p> : null}
+          {data?.metricsWarning ? <p className="mt-4 rounded-2xl bg-amber-50 p-3 text-sm font-bold text-amber-800">{data.metricsWarning}</p> : null}
           {error ? <p className="mt-4 rounded-2xl bg-rose-50 p-3 text-sm font-bold text-rose-700">{error}</p> : null}
 
           <div className="mt-5 overflow-hidden rounded-2xl border border-line">
-            <div className="grid grid-cols-[minmax(180px,1.3fr)_minmax(220px,1.7fr)_110px_110px_90px] gap-0 bg-slate-50 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
+            <div className="grid grid-cols-[minmax(180px,1.2fr)_minmax(210px,1.45fr)_minmax(170px,0.95fr)_95px_95px_90px] gap-0 bg-slate-50 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
               <div>Bruker</div>
               <div>Husholdninger</div>
+              <div>Basis/priser</div>
               <div>Opprettet</div>
               <div>Sist inn</div>
               <div className="text-right">Handling</div>
@@ -161,7 +186,7 @@ export default function SystemUsersPage() {
             {!loading && users.length === 0 ? <p className="p-4 text-sm font-semibold text-muted">Ingen brukere funnet.</p> : null}
 
             {!loading && users.map((user) => (
-              <div key={user.id} className="grid grid-cols-[minmax(180px,1.3fr)_minmax(220px,1.7fr)_110px_110px_90px] items-center border-t border-line px-3 py-3 text-sm">
+              <div key={user.id} className="grid grid-cols-[minmax(180px,1.2fr)_minmax(210px,1.45fr)_minmax(170px,0.95fr)_95px_95px_90px] items-center border-t border-line px-3 py-3 text-sm">
                 <div className="min-w-0">
                   <p className="truncate font-black text-slate-900" title={user.email}>{user.email || "(uten e-post)"}</p>
                   <p className="mt-0.5 truncate text-[11px] font-mono text-slate-400" title={user.id}>{user.id}</p>
@@ -183,6 +208,15 @@ export default function SystemUsersPage() {
                   )}
                 </div>
 
+                <div className="text-xs font-semibold text-slate-600">
+                  <p><span className="font-black text-slate-800">{userMetrics(user).basis_product_count}</span> basis</p>
+                  <p className="mt-1 text-slate-500">
+                    <span className="font-black text-slate-800">{userMetrics(user).user_registered_price_count}</span> priser
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-slate-400" title="Skannet hyllekant / manuelt / kvitteringsmatch">
+                    S {userMetrics(user).scanned_price_count} · M {userMetrics(user).manual_price_count} · K {userMetrics(user).receipt_price_count}
+                  </p>
+                </div>
                 <div className="text-xs font-semibold text-slate-500" title={dateLabel(user.created_at)}>{compactDate(user.created_at)}</div>
                 <div className="text-xs font-semibold text-slate-500" title={dateLabel(user.last_sign_in_at)}>{compactDate(user.last_sign_in_at)}</div>
                 <div className="text-right">

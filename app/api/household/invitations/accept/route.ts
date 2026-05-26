@@ -135,7 +135,7 @@ export async function POST(request: Request) {
     if (invitationExpired(invitation.expires_at)) {
       await supabase
         .from("household_invitations")
-        .update({ status: "expired" })
+        .update({ status: "expired", updated_at: new Date().toISOString() })
         .eq("id", invitation.id)
         .eq("status", "pending")
         .then(() => undefined, () => undefined);
@@ -230,7 +230,8 @@ export async function POST(request: Request) {
         accepted_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
-      .eq("id", invitation.id);
+      .eq("id", invitation.id)
+      .in("status", ["pending", "accepted"]);
 
     if (acceptedError) {
       console.error("[api/household/invitations/accept] invitation update", acceptedError);

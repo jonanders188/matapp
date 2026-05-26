@@ -16,8 +16,22 @@ type HouseholdRow = {
   name: string | null;
 };
 
+type UserMetricsRow = {
+  user_id: string;
+  basis_product_count: number | string | null;
+  scanned_price_count: number | string | null;
+  manual_price_count: number | string | null;
+  receipt_price_count: number | string | null;
+  user_registered_price_count: number | string | null;
+};
+
 function normalizeEmail(value: unknown) {
   return String(value ?? "").trim().toLowerCase();
+}
+
+function toCount(value: unknown) {
+  const number = typeof value === "number" ? value : Number(value ?? 0);
+  return Number.isFinite(number) ? number : 0;
 }
 
 export async function GET(request: Request) {
@@ -71,6 +85,23 @@ export async function GET(request: Request) {
       membershipsByUserId.set(membership.user_id, list);
     }
 
+    const metricsByUserId = new Map<string, UserMetricsRow>();
+    let metricsWarning: string | null = null;
+    if (userIds.length) {
+      const { data: metricsData, error: metricsError } = await supabase.rpc("system_admin_user_metrics", {
+        target_user_ids: userIds
+      });
+
+      if (metricsError) {
+        metricsWarning = "Brukermetrikk mangler. Kjor supabase/patch-052-system-admin-user-metrics.sql.";
+        console.warn("[api/admin/users] metrics rpc failed", metricsError.message);
+      } else {
+        for (const metric of (metricsData ?? []) as UserMetricsRow[]) {
+          if (metric.user_id) metricsByUserId.set(metric.user_id, metric);
+        }
+      }
+    }
+
     const rows = users
       .map((user) => {
         const householdMemberships = (membershipsByUserId.get(user.id) ?? []).map((membership) => ({
@@ -78,6 +109,8 @@ export async function GET(request: Request) {
           name: householdsById.get(membership.household_id)?.name?.trim() || "Hjemme",
           role: membership.role === "admin" ? "admin" : "member"
         }));
+
+        const metrics = metricsByUserId.get(user.id);
 
         return {
           id: user.id,
@@ -87,6 +120,13 @@ export async function GET(request: Request) {
           confirmed_at: user.confirmed_at,
           household_count: householdMemberships.length,
           households: householdMemberships,
+          metrics: {
+            basis_product_count: toCount(metrics?.basis_product_count),
+            scanned_price_count: toCount(metrics?.scanned_price_count),
+            manual_price_count: toCount(metrics?.manual_price_count),
+            receipt_price_count: toCount(metrics?.receipt_price_count),
+            user_registered_price_count: toCount(metrics?.user_registered_price_count)
+          },
           can_delete: householdMemberships.length === 0
         };
       })
@@ -97,7 +137,8 @@ export async function GET(request: Request) {
         users: rows,
         page,
         perPage,
-        totalApprox: authData.total ?? rows.length
+        totalApprox: authData.total ?? rows.length,
+        metricsWarning
       }
     });
   } catch (error) {

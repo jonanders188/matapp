@@ -23,6 +23,18 @@ function inviteToken() {
   return `${Date.now()}${Math.random()}`.replace(/\D/g, "");
 }
 
+async function findAuthUserIdByEmail(email: string) {
+  const supabase = getSupabaseAdmin();
+  const normalizedEmail = normalizeEmail(email);
+
+  // Supabase Admin API har ikke en stabil getUserByEmail i alle SDK-versjoner.
+  // Listingen er OK her fordi invitasjon er en admin-handling og beta-volumet er lavt.
+  const { data, error } = await supabase.auth.admin.listUsers();
+  if (error) throw error;
+
+  return data.users.find((user) => normalizeEmail(user.email) === normalizedEmail)?.id ?? null;
+}
+
 function appOrigin(request: Request) {
   const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim();
   if (configured) return configured.replace(/\/$/, "");
@@ -121,14 +133,43 @@ export async function POST(request: Request) {
     }
 
     const supabase = getSupabaseAdmin();
-    const { data: existingMember, error: memberError } = await supabase
-      .from("household_members")
-      .select("id")
-      .eq("household_id", current.householdId)
-      .eq("user_id", current.userId)
-      .maybeSingle();
-    if (memberError) throw memberError;
-    void existingMember;
+    const invitedUserId = await findAuthUserIdByEmail(email);
+
+    if (invitedUserId) {
+      const { data: existingMember, error: memberError } = await supabase
+        .from("household_members")
+        .select("id, role")
+        .eq("household_id", current.householdId)
+        .eq("user_id", invitedUserId)
+        .maybeSingle();
+
+      if (memberError) throw memberError;
+
+      if (existingMember?.id) {
+        const now = new Date().toISOString();
+        await supabase
+          .from("household_invitations")
+          .update({
+            status: "accepted",
+            accepted_user_id: invitedUserId,
+            accepted_at: now,
+            updated_at: now
+          })
+          .eq("household_id", current.householdId)
+          .eq("email", email)
+          .eq("status", "pending")
+          .then(() => undefined, () => undefined);
+
+        return NextResponse.json({
+          data: {
+            email,
+            status: "already_member",
+            role: existingMember.role ?? "member",
+            message: "Brukeren er allerede medlem av husholdningen. Ingen ny invitasjon ble sendt."
+          }
+        });
+      }
+    }
 
     const { data: household, error: householdError } = await supabase
       .from("households")
