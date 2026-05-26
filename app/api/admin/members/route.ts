@@ -25,7 +25,6 @@ function inviteToken() {
 
 function appOrigin(request: Request) {
   const origin = request.headers.get("origin")?.trim();
-  // Ved lokal testing skal invitasjonslenken peke til localhost, ikke produksjon.
   if (origin?.includes("localhost") || origin?.includes("127.0.0.1")) return origin.replace(/\/$/, "");
   const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim();
   if (configured) return configured.replace(/\/$/, "");
@@ -59,7 +58,7 @@ function invitationEmailHtml(params: { householdName: string; acceptUrl: string 
           <tr><td style="padding:8px 32px 0 32px;">
             <h1 style="margin:0; font-size:28px; line-height:1.2; color:#0f172a;">Du er invitert til ${householdName}</h1>
             <p style="font-size:16px; line-height:1.6; color:#334155;">Noen i husholdningen har invitert deg til Matmakt.</p>
-            <p style="font-size:16px; line-height:1.6; color:#334155;">Åpne lenken under for å godkjenne invitasjonen. Du blir ikke medlem av husholdningen før du godkjenner selv.</p>
+            <p style="font-size:16px; line-height:1.6; color:#334155;">Åpne lenken under for å godkjenne invitasjonen. Du blir ikke medlem før du godkjenner selv.</p>
           </td></tr>
           <tr><td style="padding:24px 32px;">
             <a href="${acceptUrl}" style="display:inline-block; background:#16a34a; color:#ffffff; text-decoration:none; font-size:16px; font-weight:700; padding:14px 22px; border-radius:999px;">Godkjenn invitasjon</a>
@@ -69,7 +68,7 @@ function invitationEmailHtml(params: { householdName: string; acceptUrl: string 
             <p style="font-size:13px; line-height:1.6; color:#94a3b8;">Hvis knappen ikke virker, kopier og lim inn denne lenken i nettleseren:<br /><span style="word-break:break-all;">${acceptUrl}</span></p>
           </td></tr>
           <tr><td style="padding:20px 32px; background:#f1f5f9;">
-            <p style="margin:0; font-size:12px; line-height:1.5; color:#64748b;">Du mottar denne e-posten fordi noen inviterte denne e-postadressen til en husholdning i Matmakt. Kontoer som brukes til spam, misbruk eller falske data kan stenges uten varsel.</p>
+            <p style="margin:0; font-size:12px; line-height:1.5; color:#64748b;">Du mottar denne e-posten fordi noen inviterte denne e-postadressen til en husholdning i Matmakt.</p>
           </td></tr>
         </table>
         <p style="font-size:12px; color:#94a3b8; margin-top:16px;">matmakt.no</p>
@@ -82,7 +81,7 @@ function invitationEmailHtml(params: { householdName: string; acceptUrl: string 
 async function sendInvitationEmail(params: { to: string; householdName: string; acceptUrl: string }) {
   const apiKey = process.env.RESEND_API_KEY?.trim();
   if (!apiKey) {
-    throw Object.assign(new Error("RESEND_API_KEY mangler. Legg API-nokkelen fra Resend i .env.local og Vercel env."), { status: 500 });
+    throw Object.assign(new Error("RESEND_API_KEY mangler. Legg API-nøkkelen fra Resend i .env.local og Vercel env."), { status: 500 });
   }
 
   const from = process.env.RESEND_FROM_EMAIL?.trim() || "Matmakt <no-reply@matmakt.no>";
@@ -111,38 +110,40 @@ export async function POST(request: Request) {
   try {
     const current = await requireCurrentHousehold(request);
     requireAdminRole(current.role);
-
     const body = (await request.json()) as { email?: unknown; display_name?: unknown };
     const email = normalizeEmail(body.email);
+
     if (!email || !email.includes("@")) {
       return NextResponse.json({ error: "Gyldig e-post mangler" }, { status: 400 });
     }
 
-    const displayName = String(body.display_name ?? "").trim() || displayNameFromEmail(email);
     const supabase = getSupabaseAdmin();
+    const { data: existingMember, error: memberError } = await supabase
+      .from("household_members")
+      .select("id")
+      .eq("household_id", current.householdId)
+      .eq("user_id", current.userId)
+      .maybeSingle();
+    if (memberError) throw memberError;
+    void existingMember;
 
-    const { data: household } = await supabase
+    const { data: household, error: householdError } = await supabase
       .from("households")
       .select("name")
       .eq("id", current.householdId)
-      .maybeSingle();
+      .single();
+    if (householdError) throw householdError;
 
     const householdName = String(household?.name ?? "husholdningen").trim() || "husholdningen";
+    const displayName = String(body.display_name ?? "").trim() || displayNameFromEmail(email);
     const token = inviteToken();
     const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
 
-    // Re-invitasjon skal alltid lage en fersk lenke.
-    // Tidligere brukte vi upsert paa (household_id, email). Hvis en bruker var medlem,
-    // ble fjernet og saa invitert paa nytt, kunne gammel invitasjonsrad/status/token
-    // bli liggende og gi "invitasjonen finnes ikke eller er utloept" ved klikk.
-    // For MVP er det tryggest aa erstatte eventuell gammel invitasjon for samme
-    // husholdning/e-post med en helt ny pending-invitasjon.
     const { error: deleteOldInviteError } = await supabase
       .from("household_invitations")
       .delete()
       .eq("household_id", current.householdId)
       .eq("email", email);
-
     if (deleteOldInviteError) throw deleteOldInviteError;
 
     const { data: invitation, error: invitationError } = await supabase
@@ -158,25 +159,10 @@ export async function POST(request: Request) {
         expires_at: expiresAt,
         updated_at: new Date().toISOString()
       })
-      .select("id, household_id, email, display_name, role, token, status, expires_at, created_at")
+      .select("id, email, display_name, role, token, status, expires_at, created_at")
       .single();
-
     if (invitationError) throw invitationError;
 
-    // Ekstra sikkerhet: bekreft at tokenet som skal sendes faktisk finnes i databasen.
-    const { data: savedInvitation, error: savedInvitationError } = await supabase
-      .from("household_invitations")
-      .select("id, token, status, expires_at")
-      .eq("id", invitation.id)
-      .eq("token", invitation.token)
-      .maybeSingle();
-
-    if (savedInvitationError) throw savedInvitationError;
-    if (!savedInvitation) {
-      throw Object.assign(new Error("Invitasjonen ble ikke lagret riktig. Proev igjen."), { status: 500 });
-    }
-
-    // Lukket beta: inviterte e-poster skal kunne logge inn for aa godkjenne invitasjonen.
     await supabase
       .from("beta_allowed_emails")
       .upsert({ email, note: `Invitert til ${householdName}` }, { onConflict: "email" })
@@ -192,7 +178,7 @@ export async function POST(request: Request) {
         display_name: displayName,
         role: "member",
         status: "invited",
-        message: "Invitasjon sendt. Mottaker maa godkjenne selv foer medlemskap opprettes."
+        message: "Invitasjon sendt. Mottaker må godkjenne selv før medlemskap opprettes."
       }
     });
   } catch (error) {

@@ -1,198 +1,135 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { authFetch } from "@/lib/auth-fetch";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 
-type AcceptStatus = "checking" | "login" | "accepting" | "accepted" | "error";
-
 type InvitationInfo = {
-  household_id: string;
-  household_name: string;
-  invited_email: string;
+  email: string;
+  display_name: string | null;
   status: string;
-  expires_at?: string | null;
+  expires_at: string | null;
+  household_id: string;
+  household_name: string | null;
 };
 
-function normalizeEmail(value: unknown) {
-  return String(value ?? "").trim().toLowerCase();
-}
+function AcceptInvitationContent() {
+  const searchParams = useSearchParams();
+  const token = searchParams.get("token") ?? "";
+  const [info, setInfo] = useState<InvitationInfo | null>(null);
+  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [accepting, setAccepting] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-export default function AcceptInvitationPage() {
-  const [status, setStatus] = useState<AcceptStatus>("checking");
-  const [message, setMessage] = useState("Sjekker invitasjonen...");
-  const [householdId, setHouseholdId] = useState<string | null>(null);
-  const [invitationInfo, setInvitationInfo] = useState<InvitationInfo | null>(null);
+  const nextPath = `/invitations/accept?token=${encodeURIComponent(token)}`;
 
-  const token = useMemo(() => {
-    if (typeof window === "undefined") return "";
-    return new URLSearchParams(window.location.search).get("token")?.trim() ?? "";
-  }, []);
-
-  const loginHref = `/login?next=${encodeURIComponent(`/invitations/accept?token=${token}`)}`;
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function run() {
-      if (!token) {
-        setStatus("error");
-        setMessage("Invitasjonslenken mangler token. Be om en ny invitasjon.");
-        return;
-      }
-
-      const infoResponse = await fetch(`/api/household-invitations/accept?token=${encodeURIComponent(token)}`, {
-        cache: "no-store"
-      });
-      const infoPayload = await infoResponse.json().catch(() => null) as { data?: InvitationInfo; error?: string } | null;
-
-      if (!infoResponse.ok || !infoPayload?.data) {
-        throw new Error(infoPayload?.error ?? "Invitasjonen finnes ikke eller er utløpt");
-      }
-
-      const info = infoPayload.data;
-      if (!cancelled) setInvitationInfo(info);
-
-      if (info.status === "expired") {
-        setStatus("error");
-        setMessage("Invitasjonen er utløpt. Be om en ny invitasjon.");
-        return;
-      }
-
-      if (info.status !== "pending" && info.status !== "accepted") {
-        setStatus("error");
-        setMessage("Invitasjonen er ikke aktiv lenger. Be om en ny invitasjon.");
-        return;
-      }
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      if (!token) throw new Error("Invitasjonslenken mangler token.");
+      const response = await fetch(`/api/household/invitations/accept?token=${encodeURIComponent(token)}`, { cache: "no-store" });
+      const result = await response.json().catch(() => null) as { data?: InvitationInfo; error?: string } | null;
+      if (!response.ok || !result?.data) throw new Error(result?.error ?? "Invitasjonen finnes ikke eller er utløpt.");
+      setInfo(result.data);
 
       const supabase = getSupabaseBrowserClient();
       const { data } = await supabase.auth.getSession();
-      const sessionEmail = normalizeEmail(data.session?.user?.email);
-      const invitedEmail = normalizeEmail(info.invited_email);
+      const email = data.session?.user?.email?.toLowerCase() ?? null;
+      setSessionEmail(email);
 
-      if (data.session && sessionEmail && sessionEmail !== invitedEmail) {
-        // Viktig: hvis man klikker en invitasjon mens man er logget inn med feil konto,
-        // må vi ikke forsøke å godkjenne invitasjonen med den kontoen. Logg ut først,
-        // rydd aktiv husholdning og be bruker logge inn med e-posten invitasjonen gjelder.
+      if (email && result.data.email && email !== result.data.email.toLowerCase()) {
         await supabase.auth.signOut();
-        if (typeof window !== "undefined") {
-          window.localStorage.removeItem("matmakt.activeHouseholdId");
-        }
-        if (!cancelled) {
-          setStatus("login");
-          setMessage(`Du var logget inn som ${sessionEmail}. Denne invitasjonen gjelder ${invitedEmail}. Logg inn med riktig e-post for å godkjenne.`);
-        }
-        return;
+        window.localStorage.removeItem("matmakt.activeHouseholdId");
+        setSessionEmail(null);
+        setMessage(`Du var logget inn med ${email}. Logg inn med ${result.data.email} for å godkjenne invitasjonen.`);
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Kunne ikke åpne invitasjonen.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
-      if (!data.session) {
-        if (!cancelled) {
-          setStatus("login");
-          setMessage(`Logg inn med ${invitedEmail} for å godkjenne invitasjonen til ${info.household_name}.`);
-        }
-        return;
-      }
-
-      if (!cancelled) {
-        setStatus("accepting");
-        setMessage("Godkjenner invitasjonen...");
-      }
-
-      const response = await authFetch("/api/household-invitations/accept", {
+  async function accept() {
+    if (!token) return;
+    setAccepting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await authFetch("/api/household/invitations/accept", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token })
       });
-      const payload = await response.json().catch(() => null) as { data?: { household_id?: string; alreadyAccepted?: boolean }; error?: string } | null;
-
-      if (response.status === 401) {
-        if (!cancelled) {
-          setStatus("login");
-          setMessage("Innloggingen er utløpt. Logg inn igjen med e-posten invitasjonen ble sendt til.");
-        }
-        return;
-      }
-
-      if (response.status === 403) {
-        await supabase.auth.signOut();
-        if (typeof window !== "undefined") {
-          window.localStorage.removeItem("matmakt.activeHouseholdId");
-        }
-        if (!cancelled) {
-          setStatus("login");
-          setMessage(payload?.error ?? `Logg inn med ${invitedEmail} for å godkjenne invitasjonen.`);
-        }
-        return;
-      }
-
-      if (!response.ok) {
-        throw new Error(payload?.error ?? "Kunne ikke godkjenne invitasjonen");
-      }
-
-      const nextHouseholdId = payload?.data?.household_id ?? info.household_id ?? null;
-      if (nextHouseholdId && typeof window !== "undefined") {
-        window.localStorage.setItem("matmakt.activeHouseholdId", nextHouseholdId);
-      }
-
-      if (!cancelled) {
-        setHouseholdId(nextHouseholdId);
-        setStatus("accepted");
-        setMessage(payload?.data?.alreadyAccepted ? "Invitasjonen er allerede godkjent. Medlemskapet er aktivt." : `Invitasjonen er godkjent. Du er lagt til i ${info.household_name}.`);
-      }
+      const result = await response.json().catch(() => null) as { data?: { household_id?: string }; error?: string } | null;
+      if (!response.ok) throw new Error(result?.error ?? "Kunne ikke godkjenne invitasjonen.");
+      if (result?.data?.household_id) window.localStorage.setItem("matmakt.activeHouseholdId", result.data.household_id);
+      setMessage("Invitasjonen er godtatt. Du er nå medlem av husholdningen.");
+      window.setTimeout(() => { window.location.href = "/dashboard"; }, 900);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Kunne ikke godkjenne invitasjonen.");
+    } finally {
+      setAccepting(false);
     }
+  }
 
-    run().catch((error) => {
-      if (!cancelled) {
-        setStatus("error");
-        setMessage(error instanceof Error ? error.message : "Ukjent feil");
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  const needsLogin = Boolean(info && !sessionEmail);
+  const canAccept = Boolean(info && sessionEmail && sessionEmail === info.email.toLowerCase() && info.status !== "expired");
 
   return (
     <main className="grid min-h-screen place-items-center bg-[#f6f7f5] p-4">
-      <section className="w-full max-w-lg rounded-3xl border border-line bg-white p-8 shadow-soft">
-        <p className="text-sm font-black uppercase tracking-[0.18em] text-emerald-700">Matmakt</p>
-        <h1 className="mt-3 text-4xl font-black tracking-tight text-slate-950">Invitasjon til husholdning</h1>
-        {invitationInfo?.household_name ? (
-          <p className="mt-3 rounded-2xl bg-emerald-50 p-3 text-sm font-black text-emerald-800">
-            {invitationInfo.household_name} · {invitationInfo.invited_email}
-          </p>
-        ) : null}
-        <p className="mt-4 text-lg font-semibold leading-relaxed text-slate-600">{message}</p>
+      <section className="w-full max-w-2xl rounded-[2rem] border border-line bg-white p-8 shadow-soft">
+        <p className="text-xs font-black uppercase tracking-[0.22em] text-brand">Matmakt</p>
+        <h1 className="mt-4 text-4xl font-black tracking-tight text-slate-950">Invitasjon til husholdning</h1>
 
-        {status === "login" ? (
-          <a href={loginHref} className="mt-8 inline-flex rounded-2xl bg-emerald-700 px-6 py-4 text-base font-black text-white shadow-soft">
-            Logg inn og godkjenn
-          </a>
-        ) : null}
+        {loading ? <p className="mt-6 text-lg font-bold text-muted">Laster invitasjon...</p> : null}
+        {error ? <p className="mt-6 rounded-2xl bg-rose-50 p-4 text-sm font-bold text-rose-700">{error}</p> : null}
+        {message ? <p className="mt-6 rounded-2xl bg-emerald-50 p-4 text-sm font-bold text-brand">{message}</p> : null}
 
-        {status === "accepted" ? (
-          <div className="mt-8 flex flex-wrap gap-3">
-            <a href={householdId ? "/dashboard" : "/onboarding"} className="rounded-2xl bg-emerald-700 px-6 py-4 text-base font-black text-white shadow-soft">
-              Fortsett
-            </a>
-            <a href="/dashboard" className="rounded-2xl border border-line px-6 py-4 text-base font-black text-slate-900">
-              Gå til dashboard
-            </a>
-          </div>
-        ) : null}
+        {info ? (
+          <div className="mt-6 space-y-5">
+            <div className="rounded-3xl bg-slate-50 p-5">
+              <p className="text-sm font-semibold text-muted">Du er invitert til</p>
+              <p className="mt-1 text-2xl font-black text-slate-950">{info.household_name ?? "en husholdning"}</p>
+              <p className="mt-3 text-sm font-semibold text-slate-600">Invitasjonen gjelder: {info.email}</p>
+            </div>
 
-        {status === "error" ? (
-          <div className="mt-8 flex flex-wrap gap-3">
-            <a href={loginHref} className="inline-flex rounded-2xl bg-emerald-700 px-6 py-4 text-base font-black text-white shadow-soft">
-              Logg inn på nytt
-            </a>
-            <a href="/dashboard" className="inline-flex rounded-2xl border border-line px-6 py-4 text-base font-black text-slate-900">
-              Til dashboard
-            </a>
+            {needsLogin ? (
+              <Link href={`/login?email=${encodeURIComponent(info.email)}&next=${encodeURIComponent(nextPath)}`} className="inline-flex rounded-2xl bg-brand px-5 py-4 text-sm font-black text-white">
+                Logg inn med riktig e-post
+              </Link>
+            ) : null}
+
+            {canAccept ? (
+              <button onClick={accept} disabled={accepting} className="rounded-2xl bg-brand px-5 py-4 text-sm font-black text-white disabled:opacity-60">
+                {accepting ? "Godkjenner..." : "Godkjenn invitasjon"}
+              </button>
+            ) : null}
+
+            <div>
+              <Link href="/login" className="text-sm font-bold text-brand underline">Gå til innlogging</Link>
+            </div>
           </div>
         ) : null}
       </section>
     </main>
+  );
+}
+
+export default function AcceptInvitationPage() {
+  return (
+    <Suspense fallback={<main className="grid min-h-screen place-items-center bg-[#f6f7f5] p-4"><p className="text-sm font-bold text-muted">Laster invitasjon...</p></main>}>
+      <AcceptInvitationContent />
+    </Suspense>
   );
 }

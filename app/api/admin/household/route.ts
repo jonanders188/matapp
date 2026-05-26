@@ -24,6 +24,7 @@ async function userEmail(userId: string) {
 export async function GET(request: Request) {
   try {
     const current = await requireCurrentHousehold(request);
+    requireAdminRole(current.role);
     const supabase = getSupabaseAdmin();
 
     const [householdResult, membersResult] = await Promise.all([
@@ -50,10 +51,25 @@ export async function GET(request: Request) {
       }))
     );
 
+    let invitations: unknown[] = [];
+    const invitationResult = await supabase
+      .from("household_invitations")
+      .select("id, email, display_name, role, status, expires_at, created_at")
+      .eq("household_id", current.householdId)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false });
+
+    if (!invitationResult.error) {
+      invitations = invitationResult.data ?? [];
+    } else if (invitationResult.error.code !== "42P01") {
+      throw invitationResult.error;
+    }
+
     return NextResponse.json({
       data: {
         household: householdResult.data,
         members,
+        invitations,
         currentUserId: current.userId,
         currentRole: current.role
       }
@@ -78,10 +94,7 @@ export async function PATCH(request: Request) {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from("households")
-      .update({
-        name,
-        monthly_budget: toBudget(body.monthly_budget)
-      })
+      .update({ name, monthly_budget: toBudget(body.monthly_budget) })
       .eq("id", current.householdId)
       .select("id, name, monthly_budget, created_at")
       .single();
