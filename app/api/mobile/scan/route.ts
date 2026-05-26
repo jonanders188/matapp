@@ -5,6 +5,7 @@ import { canonicalStoreIdentity, insertPriceObservations } from "@/lib/price-obs
 import { getSupabaseAdmin } from "@/lib/supabase-server";
 import { findCanonicalProductByEan, insertProductWithoutDuplicate, PRODUCT_IDENTITY_SELECT } from "@/lib/product-identity";
 import { unitPricingColumnsForProduct } from "@/lib/unit-pricing";
+import { defaultPriceValidityColumns } from "@/lib/price-validity";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -390,6 +391,7 @@ async function insertReceiptPriceObservation(
     package_unit: unitPricing.package_unit,
     unit_price_source: unitPricing.unit_price_source,
     observed_at: observedAt,
+    ...defaultPriceValidityColumns(observedAt),
     source: "receipt-scan",
     source_url: null,
     raw: {

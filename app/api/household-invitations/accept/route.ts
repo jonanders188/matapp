@@ -19,60 +19,185 @@ function errorResponse(error: unknown) {
   return NextResponse.json({ error: message }, { status });
 }
 
-export async function POST(request: Request) {
-  try {
-    const accessToken = readBearerToken(request);
-    if (!accessToken) throw apiError("Logg inn for aa godkjenne invitasjonen", 401);
+function normalizeEmail(value: unknown) {
+  return String(value ?? "").trim().toLowerCase();
+}
 
-    const supabase = getSupabaseAdmin();
-    const { data: userResult, error: userError } = await supabase.auth.getUser(accessToken);
-    if (userError || !userResult.user?.email) throw apiError("Ugyldig eller utloept innlogging", 401);
+function normalizeToken(value: unknown) {
+  return decodeURIComponent(String(value ?? "")).trim();
+}
 
-    const body = (await request.json()) as { token?: unknown };
-    const token = decodeURIComponent(String(body.token ?? "")).trim();
-    if (!token) throw apiError("Invitasjonslenken mangler token", 400);
+async function authenticatedUser(request: Request) {
+  const accessToken = readBearerToken(request);
+  if (!accessToken) throw apiError("Logg inn for å godkjenne invitasjonen", 401);
 
-    const { data: invitation, error: invitationError } = await supabase
-      .from("household_invitations")
-      .select("id, household_id, email, display_name, role, status, expires_at")
-      .eq("token", token)
-      .maybeSingle();
+  const supabase = getSupabaseAdmin();
+  const { data: userResult, error: userError } = await supabase.auth.getUser(accessToken);
+  if (userError || !userResult.user?.id || !userResult.user.email) {
+    throw apiError("Ugyldig eller utløpt innlogging", 401);
+  }
 
-    if (invitationError) throw invitationError;
-    if (!invitation) {
-      // Mer presis feilmelding ved feilsoking. Dette skjer typisk hvis man klikker
-      // en gammel invitasjonslenke etter at medlemmet er fjernet og invitert paa nytt.
-      throw apiError("Invitasjonen finnes ikke. Be om en ny invitasjon og bruk den nyeste e-posten.", 404);
-    }
-    if (String(invitation.status ?? "pending") !== "pending") throw apiError("Invitasjonen er allerede brukt", 409);
-    if (invitation.expires_at && new Date(String(invitation.expires_at)).getTime() < Date.now()) {
-      throw apiError("Invitasjonen er utloept", 410);
-    }
+  return {
+    id: userResult.user.id,
+    email: normalizeEmail(userResult.user.email)
+  };
+}
 
-    const invitedEmail = String(invitation.email ?? "").trim().toLowerCase();
-    const userEmail = userResult.user.email.trim().toLowerCase();
-    if (invitedEmail !== userEmail) {
-      throw apiError(`Denne invitasjonen gjelder ${invitedEmail}. Du er logget inn som ${userEmail}.`, 403);
-    }
+async function loadInvitationByToken(token: string) {
+  const supabase = getSupabaseAdmin();
+  const { data: invitation, error } = await supabase
+    .from("household_invitations")
+    .select("id, household_id, email, display_name, role, status, expires_at, households(name)")
+    .eq("token", token)
+    .maybeSingle();
 
-    const role = ["admin", "member", "child"].includes(String(invitation.role)) ? String(invitation.role) : "member";
-    const displayName = String(invitation.display_name ?? "").trim() || userEmail.split("@")[0] || userEmail;
+  if (error) throw error;
+  if (!invitation) {
+    throw apiError("Invitasjonen finnes ikke. Be om en ny invitasjon og bruk den nyeste e-posten.", 404);
+  }
 
-    const { data: member, error: memberError } = await supabase
+  return invitation as {
+    id: string;
+    household_id: string;
+    email: string;
+    display_name: string | null;
+    role: string | null;
+    status: string | null;
+    expires_at: string | null;
+    households?: { name?: string | null } | { name?: string | null }[] | null;
+  };
+}
+
+function householdName(invitation: { households?: { name?: string | null } | { name?: string | null }[] | null }) {
+  const value = Array.isArray(invitation.households) ? invitation.households[0]?.name : invitation.households?.name;
+  return String(value ?? "husholdningen").trim() || "husholdningen";
+}
+
+function invitationIsExpired(invitation: { expires_at?: string | null }) {
+  return Boolean(invitation.expires_at && new Date(String(invitation.expires_at)).getTime() < Date.now());
+}
+
+async function ensureMembership(params: {
+  householdId: string;
+  userId: string;
+  displayName: string;
+  role: string;
+}) {
+  const supabase = getSupabaseAdmin();
+
+  const { data: existing, error: existingError } = await supabase
+    .from("household_members")
+    .select("id, household_id, user_id, display_name, role")
+    .eq("household_id", params.householdId)
+    .eq("user_id", params.userId)
+    .maybeSingle();
+
+  if (existingError) throw existingError;
+
+  if (existing?.id) {
+    const { data: updated, error: updateError } = await supabase
       .from("household_members")
-      .upsert(
-        {
-          household_id: invitation.household_id,
-          user_id: userResult.user.id,
-          display_name: displayName,
-          role
-        },
-        { onConflict: "household_id,user_id" }
-      )
+      .update({
+        display_name: existing.display_name || params.displayName,
+        role: existing.role || params.role
+      })
+      .eq("id", existing.id)
       .select("id, household_id, user_id, display_name, role")
       .single();
 
-    if (memberError) throw memberError;
+    if (updateError) throw updateError;
+    return updated;
+  }
+
+  const { data: inserted, error: insertError } = await supabase
+    .from("household_members")
+    .insert({
+      household_id: params.householdId,
+      user_id: params.userId,
+      display_name: params.displayName,
+      role: params.role
+    })
+    .select("id, household_id, user_id, display_name, role")
+    .single();
+
+  if (insertError) throw insertError;
+  return inserted;
+}
+
+export async function GET(request: Request) {
+  try {
+    const url = new URL(request.url);
+    const token = normalizeToken(url.searchParams.get("token"));
+    if (!token) throw apiError("Invitasjonslenken mangler token", 400);
+
+    const invitation = await loadInvitationByToken(token);
+    const expired = invitationIsExpired(invitation);
+
+    if (expired && String(invitation.status ?? "pending") === "pending") {
+      await getSupabaseAdmin()
+        .from("household_invitations")
+        .update({ status: "expired", updated_at: new Date().toISOString() })
+        .eq("id", invitation.id)
+        .eq("status", "pending");
+    }
+
+    return NextResponse.json({
+      data: {
+        id: invitation.id,
+        household_id: invitation.household_id,
+        household_name: householdName(invitation),
+        invited_email: normalizeEmail(invitation.email),
+        display_name: invitation.display_name,
+        status: expired ? "expired" : String(invitation.status ?? "pending"),
+        expires_at: invitation.expires_at
+      }
+    });
+  } catch (error) {
+    console.error("[api/household-invitations/accept] GET", error);
+    return errorResponse(error);
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const user = await authenticatedUser(request);
+    const body = (await request.json()) as { token?: unknown };
+    const token = normalizeToken(body.token);
+    if (!token) throw apiError("Invitasjonslenken mangler token", 400);
+
+    const supabase = getSupabaseAdmin();
+    const invitation = await loadInvitationByToken(token);
+
+    const invitedEmail = normalizeEmail(invitation.email);
+    if (invitedEmail !== user.email) {
+      throw apiError(`Denne invitasjonen gjelder ${invitedEmail}. Du er logget inn som ${user.email}. Logg ut og inn med riktig e-post.`, 403);
+    }
+
+    if (invitationIsExpired(invitation)) {
+      await supabase
+        .from("household_invitations")
+        .update({ status: "expired", updated_at: new Date().toISOString() })
+        .eq("id", invitation.id)
+        .eq("status", "pending");
+      throw apiError("Invitasjonen er utløpt. Be om ny invitasjon.", 410);
+    }
+
+    const status = String(invitation.status ?? "pending");
+    if (status !== "pending" && status !== "accepted") {
+      throw apiError("Invitasjonen er ikke aktiv lenger. Be om ny invitasjon.", 410);
+    }
+
+    const role = ["admin", "member", "child"].includes(String(invitation.role)) ? String(invitation.role) : "member";
+    const displayName = String(invitation.display_name ?? "").trim() || user.email.split("@")[0] || user.email;
+
+    // Ikke bruk upsert her. Hvis unik constraint mangler eller er ulik mellom miljøer,
+    // kan upsert feile stille i flyten. Vi sjekker og oppretter/oppdaterer eksplisitt.
+    const member = await ensureMembership({
+      householdId: invitation.household_id,
+      userId: user.id,
+      displayName,
+      role
+    });
 
     const { error: updateError } = await supabase
       .from("household_invitations")
@@ -81,7 +206,7 @@ export async function POST(request: Request) {
 
     if (updateError) throw updateError;
 
-    return NextResponse.json({ data: member });
+    return NextResponse.json({ data: { ...member, accepted: true, alreadyAccepted: status === "accepted" } });
   } catch (error) {
     console.error("[api/household-invitations/accept] POST", error);
     return errorResponse(error);

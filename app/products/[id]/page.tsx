@@ -51,6 +51,11 @@ type Observation = {
   observed_at: string;
   source: string | null;
   source_url: string | null;
+  price_type?: string | null;
+  confidence?: string | null;
+  exclude_from_analysis?: boolean | null;
+  valid_from?: string | null;
+  valid_until?: string | null;
 };
 
 type DetailPayload = {
@@ -280,6 +285,35 @@ export default function ProductRulesPage() {
     await load();
   }
 
+
+  async function excludePriceObservationFromAnalysis(observation: Observation) {
+    const ok = window.confirm(`Ikke bruk prisen fra ${observation.store_name} (${kr(observation.price)}) i analyser og anbefalinger?\n\nPrisen beholdes i historikken, men tas ut av beslutningsgrunnlaget.`);
+    if (!ok) return;
+
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+
+    const response = await authFetch(`/api/products/${productId}/prices/${observation.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        exclude_from_analysis: true,
+        reason: "Marked wrong or unreliable from product maintenance"
+      })
+    });
+    const payload = await response.json().catch(() => null);
+    setSaving(false);
+
+    if (!response.ok) {
+      setError(payload?.error ?? "Kunne ikke markere pris som feil");
+      return;
+    }
+
+    setMessage("Prisobservasjonen beholdes, men brukes ikke lenger i analyser.");
+    await load();
+  }
+
   async function deletePriceObservation(observation: Observation) {
     const ok = window.confirm(`Slette pris fra ${observation.store_name} (${kr(observation.price)})?`);
     if (!ok) return;
@@ -308,7 +342,7 @@ export default function ProductRulesPage() {
   const latest = data?.price_observations?.[0] ?? null;
   const currentPrices = useMemo(() => (data?.price_observations ?? []).filter((item) => {
     const age = ageDays(item.observed_at);
-    return age !== null && age <= 45;
+    return item.exclude_from_analysis !== true && age !== null && age <= 45;
   }), [data?.price_observations]);
   const bestCurrentPrice = useMemo(() => [...currentPrices].filter((item) => item.unit_price !== null).sort((a, b) => Number(a.unit_price ?? Infinity) - Number(b.unit_price ?? Infinity))[0] ?? null, [currentPrices]);
   const stockTotal = useMemo(() => data?.inventory.reduce((sum, item) => sum + Number(item.quantity ?? 0), 0) ?? 0, [data]);
@@ -495,11 +529,16 @@ export default function ProductRulesPage() {
                           <div className="text-right">
                             <p className="text-lg font-black text-brand">{kr(item.price)}</p>
                             <p className="text-sm font-bold text-muted">{unitPriceLabel(item.unit_price, item.comparison_unit)}</p>
-                            <span className={`mt-2 inline-flex rounded-full px-2 py-1 text-xs font-black ${freshnessClass(item.observed_at)}`}>{freshnessLabel(item.observed_at)}</span>
+                            <span className={`mt-2 inline-flex rounded-full px-2 py-1 text-xs font-black ${item.exclude_from_analysis ? "bg-amber-50 text-amber-800" : freshnessClass(item.observed_at)}`}>{item.exclude_from_analysis ? "Ikke brukt" : freshnessLabel(item.observed_at)}</span>
                           </div>
                         </div>
                         <div className="mt-3 flex flex-wrap gap-2">
                           <button type="button" onClick={() => editPriceObservation(item)} className="rounded-lg border border-line bg-white px-3 py-2 text-xs font-bold text-slate-700">Endre</button>
+                          {item.exclude_from_analysis ? (
+                            <span className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-black text-amber-800">Ikke brukt i analyser</span>
+                          ) : (
+                            <button type="button" onClick={() => excludePriceObservationFromAnalysis(item)} className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs font-bold text-amber-800">Ikke bruk i analyser</button>
+                          )}
                           <button type="button" onClick={() => deletePriceObservation(item)} className="rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-bold text-rose-700">Slett</button>
                         </div>
                       </div>

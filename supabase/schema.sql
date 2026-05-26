@@ -57,7 +57,14 @@ create table if not exists price_observations (
   observed_at timestamptz not null default now(),
   source text default 'kassalapp',
   source_url text,
-  raw jsonb
+  raw jsonb,
+  valid_from timestamptz,
+  valid_until timestamptz,
+  price_type text not null default 'regular',
+  is_campaign boolean not null default false,
+  campaign_label text,
+  confidence text not null default 'high',
+  exclude_from_analysis boolean not null default false
 );
 
 create table if not exists purchases (

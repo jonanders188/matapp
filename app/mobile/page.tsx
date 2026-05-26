@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { authFetch } from "@/lib/auth-fetch";
+import { unitPricingColumnsForProduct } from "@/lib/unit-pricing";
 import { StoreLogoBadge, displayUnitSuffix } from "./store-branding";
 
 type BarcodeResult = { rawValue: string };
@@ -129,6 +130,30 @@ function unitLabel(unit: string | null | undefined) {
 function parsePrice(value: string) {
   const number = Number(value.replace(/\s/g, "").replace(",", "."));
   return Number.isFinite(number) ? number : null;
+}
+
+
+function unitPricePreviewForProduct(product: QuickProduct | null | undefined, price: number | null) {
+  if (!product || price === null || price <= 0) return null;
+  return unitPricingColumnsForProduct(
+    {
+      name: product.name,
+      brand: product.brand,
+      category: product.category,
+      package_size: product.packageSize,
+      comparison_unit: null
+    },
+    price
+  );
+}
+
+function suspiciousPriceMessage(price: number | null, referencePrice: number | null | undefined, productName: string | null | undefined) {
+  if (price === null || !referencePrice || referencePrice <= 0) return null;
+  const ratio = price / referencePrice;
+  if (ratio < 0.5 || ratio > 1.75) {
+    return `${productName ?? "Varen"}: ${kr(price)} avviker mye fra sist kjent nivå (${kr(referencePrice)}). Stemmer prisen?`;
+  }
+  return null;
 }
 
 function groupPriceFreshnessLabel(price: QuickGroupPrice | null | undefined) {
@@ -283,6 +308,14 @@ export default function MobileScanPage() {
   const canScan = Boolean(selectedStore);
   const productIsUnsaved = Boolean(lookup?.product && !lookup.existsLocally);
   const hasResult = Boolean(lookup);
+
+  const parsedManualPrice = useMemo(() => parsePrice(manualPrice), [manualPrice]);
+  const manualUnitPreview = useMemo(() => unitPricePreviewForProduct(lookup?.product, parsedManualPrice), [lookup?.product, parsedManualPrice]);
+  const referencePriceForWarning = selectedStorePrice?.price ?? scannedGroupPrice?.price ?? cheapestGroupPrice?.price ?? null;
+  const manualPriceWarning = useMemo(
+    () => suspiciousPriceMessage(parsedManualPrice, referencePriceForWarning, lookup?.product?.name),
+    [parsedManualPrice, referencePriceForWarning, lookup?.product?.name]
+  );
 
 
   useEffect(() => {
@@ -470,6 +503,12 @@ export default function MobileScanPage() {
 
     if (productIsUnsaved && saveMode === "none") {
       setError("Varen må lagres globalt eller i basisutvalget før prisen kan lagres.");
+      return;
+    }
+
+    const warning = suspiciousPriceMessage(price, referencePriceForWarning, lookup?.product?.name);
+    if (warning && !window.confirm(`${warning}\n\nVelg OK for aa lagre likevel, eller Avbryt for aa rette prisen.`)) {
+      window.setTimeout(() => priceInputRef.current?.focus(), 0);
       return;
     }
 
@@ -881,18 +920,33 @@ export default function MobileScanPage() {
                     placeholder="f.eks. 29,90"
                     className="mt-3 w-full rounded-3xl border-2 border-slate-200 px-4 py-5 text-4xl font-black text-slate-950 outline-none focus:border-emerald-500"
                   />
-                  <p className="mt-2 text-sm font-semibold text-slate-500">
-                    Er butikkprisen lik sist kjent pris, trykk Del. Er den annerledes, skriv ny pris først.
-                  </p>
+                  <div className="mt-3 space-y-2">
+                    {manualUnitPreview?.unit_price != null ? (
+                      <p className="rounded-2xl bg-emerald-50 p-3 text-sm font-black text-emerald-800">
+                        Beregnet enhetspris: {kr(manualUnitPreview.unit_price)} / {displayUnitSuffix(manualUnitPreview.comparison_unit)}
+                        {manualUnitPreview.package_quantity ? ` · pakning ${manualUnitPreview.package_quantity} ${manualUnitPreview.package_unit ?? ""}` : ""}
+                      </p>
+                    ) : parsedManualPrice ? (
+                      <p className="rounded-2xl bg-amber-50 p-3 text-sm font-black text-amber-900">
+                        Vi mangler trygg pakningsstørrelse. Prisen kan lagres, men brukes ikke i analyser før pakningen er rettet.
+                      </p>
+                    ) : null}
+                    {manualPriceWarning ? (
+                      <p className="rounded-2xl bg-rose-50 p-3 text-sm font-black text-rose-800">{manualPriceWarning}</p>
+                    ) : null}
+                    <p className="text-sm font-semibold text-slate-500">
+                      Registrer prisen du ser eller betalte. Matmakt skiller kampanjer og analyseinfo i egne import-/analyselag.
+                    </p>
+                  </div>
                 </div>
 
                 <button
                   type="button"
                   onClick={() => savePrice(parsePrice(manualPrice) ?? undefined)}
-                  disabled={busy || !lookup.product || !parsePrice(manualPrice) || (productIsUnsaved && saveMode === "none")}
+                  disabled={busy || !lookup.product || !parsedManualPrice || (productIsUnsaved && saveMode === "none")}
                   className="mt-4 w-full rounded-3xl bg-emerald-700 px-4 py-5 text-xl font-black text-white disabled:opacity-50"
                 >
-                  Del {parsePrice(manualPrice) ? kr(parsePrice(manualPrice)) : "pris"} hos {selectedStore?.storeName}
+                  Del {parsedManualPrice ? kr(parsedManualPrice) : "pris"} hos {selectedStore?.storeName}
                 </button>
                 {productIsUnsaved && saveMode === "none" ? <p className="mt-3 text-sm font-semibold text-slate-500">Ikke lagre brukes bare for å se priser. Prisen kan ikke lagres uten produkt.</p> : null}
               </section>

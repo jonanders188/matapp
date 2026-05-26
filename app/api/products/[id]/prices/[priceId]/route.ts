@@ -31,12 +31,13 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     const body = await request.json().catch(() => ({}));
     const price = toNullableNumber(body.price);
     const storeName = String(body.store_name ?? "").trim();
+    const excludeFromAnalysis = body.exclude_from_analysis === true;
 
-    if (!price || price <= 0) {
+    if (!excludeFromAnalysis && (!price || price <= 0)) {
       return NextResponse.json({ error: "Pris må være større enn 0" }, { status: 400 });
     }
 
-    if (!storeName) {
+    if (!excludeFromAnalysis && !storeName) {
       return NextResponse.json({ error: "Butikk mangler" }, { status: 400 });
     }
 
@@ -52,6 +53,28 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     if (existing.error) throw existing.error;
     if (!existing.data?.[0]) {
       return NextResponse.json({ error: "Fant ikke prisobservasjon" }, { status: 404 });
+    }
+
+    if (excludeFromAnalysis) {
+      const updated = await supabase
+        .from("price_observations")
+        .update({
+          exclude_from_analysis: true,
+          confidence: "low",
+          source: "manual-excluded-from-analysis",
+          raw: {
+            excluded_from_analysis: true,
+            excluded_reason: String(body.reason ?? "Marked as wrong price in product maintenance"),
+            excluded_at: new Date().toISOString()
+          }
+        })
+        .eq("id", priceId)
+        .eq("product_id", id)
+        .select("id, store_code, store_name, price, unit_price, comparison_unit, package_quantity, package_unit, observed_at, source, source_url, price_type, confidence, exclude_from_analysis, valid_from, valid_until")
+        .single();
+
+      if (updated.error) throw updated.error;
+      return NextResponse.json({ data: updated.data });
     }
 
     const productResult = await supabase
@@ -101,7 +124,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       .update(payload)
       .eq("id", priceId)
       .eq("product_id", id)
-      .select("id, store_code, store_name, price, unit_price, comparison_unit, package_quantity, package_unit, observed_at, source, source_url")
+      .select("id, store_code, store_name, price, unit_price, comparison_unit, package_quantity, package_unit, observed_at, source, source_url, price_type, confidence, exclude_from_analysis, valid_from, valid_until")
       .single();
 
     if (updated.error) throw updated.error;

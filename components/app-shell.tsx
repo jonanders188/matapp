@@ -56,7 +56,6 @@ const navSections: { title: string; items: NavItem[] }[] = [
   {
     title: "Varer",
     items: [
-      { label: "Kom i gang", href: "/onboarding", icon: Sparkles, aliases: ["Onboarding", "Veiviser"], description: "Skann lager først" },
       { label: "Basisvarer", href: "/products", icon: PackageSearch, aliases: ["Basisutvalg", "Produkter"], description: "Ditt faste vareutvalg" },
       { label: "Legg til varer", href: "/catalog", icon: Database, aliases: ["Produktregister", "Katalog"], description: "Finn flere varer" }
     ]
@@ -73,7 +72,7 @@ const navSections: { title: string; items: NavItem[] }[] = [
 const quickActions = [
   { label: "Bygg basis", href: "/mobile2" },
   { label: "Skann pris", href: "/mobile" },
-  { label: "Kom i gang", href: "/onboarding" }
+  { label: "Basisvarer", href: "/products" }
 ] as const;
 
 function emptyAccess(): AccessState {
@@ -208,14 +207,8 @@ export function AppShell({ active, children }: { active: string; children: React
     <main className="min-h-screen bg-[#f6f7f5] p-2 sm:p-4">
       <div className="mx-auto flex min-h-[calc(100vh-1rem)] max-w-[1500px] flex-col overflow-hidden rounded-3xl border border-line bg-white shadow-soft sm:min-h-[calc(100vh-2rem)] lg:flex-row">
         <aside className="shrink-0 border-b border-line bg-white p-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:w-64 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:p-5">
-          <Link href="/prices" className="mb-4 flex items-center gap-3 text-xl font-bold text-brand lg:mb-8">
-            <span className="grid h-12 w-12 place-items-center overflow-hidden rounded-2xl bg-white ring-1 ring-emerald-100">
-              <img src="/brand/matmakt-mark.svg" alt="" className="h-10 w-10" />
-            </span>
-            <span>
-              <span className="block text-slate-950">Matmakt</span>
-              <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">Basisvarer</span>
-            </span>
+                    <Link href="/prices" className="mb-4 flex items-center lg:mb-8" aria-label="Matmakt">
+            <img src="/brand/matmakt-logo.svg" alt="Matmakt" className="h-10 w-auto max-w-[190px] object-contain" />
           </Link>
 
           <nav className="space-y-4 lg:space-y-5">
@@ -283,8 +276,8 @@ export function AppShell({ active, children }: { active: string; children: React
               <p className="mt-1 text-lg font-bold text-slate-900">{active}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {quickActions.map((action) => (
-                <Link key={action.href} href={action.href} className="rounded-xl border border-line bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+              {quickActions.map((action, index) => (
+                <Link key={`${action.href}-${index}`} href={action.href} className="rounded-xl border border-line bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
                   {action.label}
                 </Link>
               ))}

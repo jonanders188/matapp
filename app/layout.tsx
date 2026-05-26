@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Matmakt",
   description: "Felles prisdata for smartere husholdninger",
-  icons: { icon: "/favicon.svg" }
+  icons: { icon: "/favicon.svg", apple: "/brand/matmakt-icon.svg" }
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

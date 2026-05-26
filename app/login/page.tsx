@@ -6,14 +6,24 @@ import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 type Mode = "login" | "signup";
 
 function friendlyAuthError(message: string) {
-  if (message.toLowerCase().includes("invalid login credentials")) return "Feil e-post eller passord.";
-  if (message.toLowerCase().includes("password should be")) return "Passordet må være minst 6 tegn.";
+  const lower = message.toLowerCase();
+  if (lower.includes("invalid login credentials")) return "Feil e-post eller passord.";
+  if (lower.includes("password should be")) return "Passordet må være minst 6 tegn.";
+  if (lower.includes("email rate limit")) return "For mange e-poster på kort tid. Vent litt og prøv igjen.";
   return message;
 }
 
 function nextPath() {
   if (typeof window === "undefined") return "/onboarding";
-  return new URLSearchParams(window.location.search).get("next") || "/onboarding";
+  const value = new URLSearchParams(window.location.search).get("next") || "/onboarding";
+  // Ikke tillat ekstern redirect via next-parameter.
+  if (!value.startsWith("/")) return "/onboarding";
+  return value;
+}
+
+function redirectUrl(path: string) {
+  if (typeof window === "undefined") return path;
+  return `${window.location.origin}${path}`;
 }
 
 export default function LoginPage() {
@@ -24,17 +34,11 @@ export default function LoginPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const canUsePassword = Boolean(email.trim()) && password.length >= 6;
+  const normalizedEmail = email.trim().toLowerCase();
+  const canSubmitPassword = Boolean(normalizedEmail) && password.length >= 6;
+  const intendedPath = nextPath();
 
-  function onboardingUrl() {
-    return `${window.location.origin}/onboarding`;
-  }
-
-  function setPasswordUrl() {
-    return `${window.location.origin}/set-password`;
-  }
-
-  async function signInWithPassword(event: React.FormEvent) {
+  async function signInOrSignUpWithPassword(event: React.FormEvent) {
     event.preventDefault();
     setLoading(true);
     setError(null);
@@ -43,10 +47,10 @@ export default function LoginPage() {
     const supabase = getSupabaseBrowserClient();
 
     if (mode === "signup") {
-      const { error: signUpError } = await supabase.auth.signUp({
-        email,
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email: normalizedEmail,
         password,
-        options: { emailRedirectTo: onboardingUrl() }
+        options: { emailRedirectTo: redirectUrl(intendedPath) }
       });
 
       setLoading(false);
@@ -55,11 +59,16 @@ export default function LoginPage() {
         return;
       }
 
-      setMessage("Sjekk e-posten din for å bekrefte kontoen. Etterpå kan du logge inn med passord.");
+      if (data.session) {
+        window.location.href = intendedPath;
+        return;
+      }
+
+      setMessage("Sjekk e-posten din for å bekrefte kontoen. Etterpå fortsetter du automatisk til riktig side.");
       return;
     }
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
 
     setLoading(false);
     if (signInError) {
@@ -67,31 +76,7 @@ export default function LoginPage() {
       return;
     }
 
-    window.location.href = "/onboarding";
-  }
-
-
-  async function signUpWithPassword() {
-    setLoading(true);
-    setError(null);
-    setMessage(null);
-
-    const supabase = getSupabaseBrowserClient();
-    const { error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}${nextPath()}`
-      }
-    });
-
-    setLoading(false);
-    if (signUpError) {
-      setError(signUpError.message);
-      return;
-    }
-
-    setMessage("Sjekk e-posten din for aa bekrefte kontoen.");
+    window.location.href = intendedPath;
   }
 
   async function sendMagicLink() {
@@ -101,10 +86,8 @@ export default function LoginPage() {
 
     const supabase = getSupabaseBrowserClient();
     const { error: otpError } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: onboardingUrl()
-      }
+      email: normalizedEmail,
+      options: { emailRedirectTo: redirectUrl(intendedPath) }
     });
 
     setLoading(false);
@@ -113,7 +96,7 @@ export default function LoginPage() {
       return;
     }
 
-    setMessage("Sjekk e-posten din. Der ligger innloggingslenken til Matmakt.");
+    setMessage("Sjekk e-posten din. Lenken tar deg videre til riktig sted i Matmakt.");
   }
 
   async function sendPasswordReset() {
@@ -122,8 +105,8 @@ export default function LoginPage() {
     setMessage(null);
 
     const supabase = getSupabaseBrowserClient();
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: setPasswordUrl()
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+      redirectTo: redirectUrl(`/set-password?next=${encodeURIComponent(intendedPath)}`)
     });
 
     setLoading(false);
@@ -168,7 +151,7 @@ export default function LoginPage() {
           </button>
         </div>
 
-        <form onSubmit={signInWithPassword} className="mt-6 space-y-4">
+        <form onSubmit={signInOrSignUpWithPassword} className="mt-6 space-y-4">
           <label className="block text-sm font-medium text-slate-700">
             E-post
             <input
@@ -189,23 +172,27 @@ export default function LoginPage() {
               type="password"
               autoComplete={mode === "login" ? "current-password" : "new-password"}
               minLength={6}
+              required={mode === "signup"}
               className="mt-2 w-full rounded-xl border border-line px-4 py-3 text-sm outline-none focus:border-brand"
             />
           </label>
 
+          {intendedPath.startsWith("/invitations/accept") ? (
+            <p className="rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">
+              Logg inn med e-posten invitasjonen ble sendt til. Etter innlogging fortsetter godkjenningen automatisk.
+            </p>
+          ) : null}
+
           {error ? <p className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p> : null}
           {message ? <p className="rounded-xl bg-emerald-50 p-3 text-sm text-brand">{message}</p> : null}
 
-          <button disabled={loading || !canUsePassword} className="w-full rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
+          <button disabled={loading || !canSubmitPassword} className="w-full rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
             {loading ? "Jobber..." : mode === "login" ? "Logg inn med passord" : "Opprett konto med passord"}
           </button>
-          <button type="button" onClick={signUpWithPassword} disabled={loading || !email || !password} className="w-full rounded-xl border border-line px-4 py-3 text-sm font-semibold text-slate-900 disabled:opacity-60">
-            Opprett konto med passord
-          </button>
-          <button type="button" onClick={sendMagicLink} disabled={loading || !email} className="w-full rounded-xl border border-line px-4 py-3 text-sm font-semibold text-brand disabled:opacity-60">
+          <button type="button" onClick={sendMagicLink} disabled={loading || !normalizedEmail} className="w-full rounded-xl border border-line px-4 py-3 text-sm font-semibold text-brand disabled:opacity-60">
             Send magic link
           </button>
-          <button type="button" onClick={sendPasswordReset} disabled={loading || !email} className="w-full px-4 py-2 text-sm font-semibold text-slate-500 disabled:opacity-60">
+          <button type="button" onClick={sendPasswordReset} disabled={loading || !normalizedEmail} className="w-full px-4 py-2 text-sm font-semibold text-slate-500 disabled:opacity-60">
             Sett eller glemt passord?
           </button>
         </form>

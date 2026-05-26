@@ -265,9 +265,10 @@ async function loadProductGroupSummary(productId: string): Promise<ProductGroupS
 
   const { data: observations, error: observationError } = await supabase
     .from("price_observations")
-    .select("id, product_id, store_code, store_name, price, unit_price, comparison_unit, package_quantity, package_unit, observed_at, source, source_url")
+    .select("id, product_id, store_code, store_name, price, unit_price, comparison_unit, package_quantity, package_unit, observed_at, source, source_url, price_type, confidence, exclude_from_analysis, valid_from, valid_until")
     .in("product_id", productIds)
     .not("price", "is", null)
+    .neq("exclude_from_analysis", true)
     .gte("observed_at", currentPriceCutoff)
     .order("observed_at", { ascending: false })
     .limit(200);
@@ -400,7 +401,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 
     const priceResult = await supabase
       .from("price_observations")
-      .select("id, store_code, store_name, price, unit_price, comparison_unit, package_quantity, package_unit, observed_at, source, source_url")
+      .select("id, store_code, store_name, price, unit_price, comparison_unit, package_quantity, package_unit, observed_at, source, source_url, price_type, confidence, exclude_from_analysis, valid_from, valid_until")
       .eq("product_id", id)
       .order("observed_at", { ascending: false })
       .limit(20);

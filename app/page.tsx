@@ -19,8 +19,7 @@ export default function Home() {
       <section className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-5 py-6 sm:px-8 lg:px-10">
         <header className="flex items-center justify-between gap-4">
           <Link href="/" className="flex items-center gap-3">
-            <img src="/brand/matmakt-mark.svg" alt="" className="h-12 w-12" />
-            <span className="text-2xl font-black tracking-tight">Matmakt</span>
+            <img src="/brand/matmakt-logo.svg" alt="Matmakt" className="h-12 w-auto" />
           </Link>
           <div className="flex items-center gap-2">
             <Link href="/login" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 shadow-sm hover:bg-slate-50">Logg inn</Link>
@@ -46,7 +45,7 @@ export default function Home() {
 
           <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-xl">
             <div className="rounded-[1.5rem] bg-slate-950 p-6 text-white">
-              <img src="/brand/matmakt-logo.svg" alt="Matmakt" className="h-16 w-auto rounded-xl bg-white p-2" />
+              <img src="/brand/matmakt-logo.svg" alt="Matmakt" className="h-16 w-auto rounded-xl bg-white/95 p-2" />
               <h2 className="mt-8 text-3xl font-black">Start med lageret ditt.</h2>
               <p className="mt-3 text-slate-300">Skann varer i kjøleskap, fryser, skuffer og skap. En basisvare er basisvare helt til du velger den bort.</p>
             </div>

@@ -12,6 +12,7 @@ import { canonicalStoreIdentity, normalizeStoreCode, priceProductsForProduct } f
 import { findCanonicalProductByEan, insertProductWithoutDuplicate, PRODUCT_IDENTITY_SELECT } from "@/lib/product-identity";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
 import { unitPricingColumnsForProduct } from "@/lib/unit-pricing";
+import { defaultPriceValidityColumns } from "@/lib/price-validity";
 
 type SaveMode = "none" | "global" | "basis";
 
@@ -284,7 +285,7 @@ async function pricesFromDatabase(productId: string, stores: Awaited<ReturnType<
 
   const { data, error } = await supabase
     .from("price_observations")
-    .select("product_id, store_code, store_name, price, unit_price, observed_at, source")
+    .select("product_id, store_code, store_name, price, unit_price, observed_at, source, exclude_from_analysis")
     .eq("product_id", productId)
     .gte("observed_at", earliest)
     .order("observed_at", { ascending: false })
@@ -448,9 +449,10 @@ async function loadProductGroupSummary(productId: string, stores: Awaited<Return
 
   const { data: observations, error: observationsError } = await supabase
     .from("price_observations")
-    .select("id, product_id, store_code, store_name, price, unit_price, comparison_unit, package_quantity, package_unit, unit_price_source, observed_at, source")
+    .select("id, product_id, store_code, store_name, price, unit_price, comparison_unit, package_quantity, package_unit, unit_price_source, observed_at, source, exclude_from_analysis")
     .in("product_id", productIds)
     .not("price", "is", null)
+    .neq("exclude_from_analysis", true)
     .gte("observed_at", groupPriceCutoff)
     .order("observed_at", { ascending: false })
     .limit(200);
@@ -650,6 +652,9 @@ export async function POST(request: Request) {
     const supabase = getSupabaseAdmin();
     const observedAt = new Date().toISOString();
     const unitPricing = unitPricingColumnsForProduct(product, price);
+    const priceQualityColumns = unitPricing.unit_price === null
+      ? { confidence: "low", exclude_from_analysis: true }
+      : { confidence: "high", exclude_from_analysis: false };
     const { error } = await supabase.from("price_observations").insert({
       product_id: product.id,
       household_id: householdId,
@@ -665,6 +670,7 @@ export async function POST(request: Request) {
       package_unit: unitPricing.package_unit,
       unit_price_source: unitPricing.unit_price_source,
       observed_at: observedAt,
+      ...defaultPriceValidityColumns(observedAt, priceQualityColumns),
       source: "manual",
       source_url: null,
       raw: {

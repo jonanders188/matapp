@@ -107,23 +107,41 @@ export default function DashboardPage() {
 
       {error ? <div className="mt-6 rounded-2xl bg-rose-50 p-4 text-rose-700">{error}</div> : null}
 
-      <section className="mt-6 grid gap-3 lg:grid-cols-3">
-        <Link href="/mobile2" className="rounded-3xl border border-emerald-100 bg-emerald-700 p-5 text-white shadow-sm transition hover:bg-emerald-800">
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-100">Enkleste start</p>
-          <h2 className="mt-2 text-2xl font-black">Skann hjemmevarer</h2>
-          <p className="mt-2 text-sm font-semibold text-emerald-50">Bygg basisvarer fra kjøleskap, fryser, skuffer og skap. Ingen pris trengs.</p>
-        </Link>
-        <Link href="/mobile2" className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:bg-slate-50">
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Etter handel</p>
-          <h2 className="mt-2 text-2xl font-black text-slate-950">Skann kvittering</h2>
-          <p className="mt-2 text-sm font-semibold text-slate-600">Matmakt matcher kvitteringen mot basisvarene. Ukjente varer kan skannes etterpå.</p>
-        </Link>
-        <Link href="/onboarding" className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:bg-slate-50">
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Husholdning</p>
-          <h2 className="mt-2 text-2xl font-black text-slate-950">Inviter medlemmer</h2>
-          <p className="mt-2 text-sm font-semibold text-slate-600">E-post er nok. Alle i husholdningen kan hjelpe til med lager, basisvarer og kvitteringer.</p>
-        </Link>
-      </section>
+      {!loading && data.productCount === 0 ? (
+        <section className="mt-6 grid gap-3 lg:grid-cols-3">
+          <Link href="/mobile2" className="rounded-3xl border border-emerald-100 bg-emerald-700 p-5 text-white shadow-sm transition hover:bg-emerald-800">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-100">Start her</p>
+            <h2 className="mt-2 text-2xl font-black">Skann hjemmevarer</h2>
+            <p className="mt-2 text-sm font-semibold text-emerald-50">Bygg basisvarer fra kjøleskap, fryser, skuffer og skap. Ingen pris trengs.</p>
+          </Link>
+          <Link href="/mobile2" className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:bg-slate-50">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Etter handel</p>
+            <h2 className="mt-2 text-2xl font-black text-slate-950">Skann kvittering</h2>
+            <p className="mt-2 text-sm font-semibold text-slate-600">Matmakt matcher kvitteringen mot basisvarene. Ukjente varer kan skannes etterpå.</p>
+          </Link>
+          <Link href="/onboarding?force=1" className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:bg-slate-50">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Husholdning</p>
+            <h2 className="mt-2 text-2xl font-black text-slate-950">Inviter medlemmer</h2>
+            <p className="mt-2 text-sm font-semibold text-slate-600">E-post er nok. Alle i husholdningen kan hjelpe til med lager, basisvarer og kvitteringer.</p>
+          </Link>
+        </section>
+      ) : null}
+
+      {!loading && data.productCount > 0 ? (
+        <section className="mt-6 rounded-3xl border border-emerald-100 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Neste steg</p>
+              <h2 className="mt-2 text-2xl font-black text-slate-950">Basisvarene er i gang</h2>
+              <p className="mt-1 text-sm font-semibold text-slate-600">Bruk dashboardet til nåpriser. Skann flere hjemmevarer eller kvittering når det passer.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link href="/mobile2" className="rounded-2xl bg-emerald-700 px-4 py-3 text-sm font-black text-white">Skann hjemmevarer</Link>
+              <Link href="/mobile2" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-800">Skann kvittering</Link>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 xl:gap-5">
         <StatCard title="Beste butikk nå" value={data.bestStore?.store ?? "-"} subtitle={data.bestStore ? `${kr(data.bestStore.total)} · ${data.bestStore.coveragePct}% dekning` : "Ingen priser ennå"} />
