@@ -109,14 +109,21 @@ async function sendInvitationEmail(params: { to: string; householdName: string; 
   }
 }
 
-export async function PATCH(request: Request, context: RouteContext) {
+async function handleInvitationAction(request: Request, context: RouteContext, forcedAction?: "resend" | "cancel") {
   try {
     const { id } = await context.params;
     const current = await requireCurrentHousehold(request);
     requireAdminRole(current.role);
 
-    const body = (await request.json().catch(() => ({}))) as { action?: unknown };
-    const action = String(body.action ?? "").trim();
+    let action = forcedAction;
+    if (!action) {
+      const body = (await request.json().catch(() => ({}))) as { action?: unknown };
+      const requestedAction = String(body.action ?? "").trim();
+      if (requestedAction === "resend" || requestedAction === "cancel") {
+        action = requestedAction;
+      }
+    }
+
     if (!id) return NextResponse.json({ error: "Invitasjons-ID mangler" }, { status: 400 });
     if (action !== "resend" && action !== "cancel") {
       return NextResponse.json({ error: "Ukjent invitasjonshandling" }, { status: 400 });
@@ -177,4 +184,16 @@ export async function PATCH(request: Request, context: RouteContext) {
     console.error("[api/admin/invitations/[id]] PATCH", error);
     return apiErrorResponse(error);
   }
+}
+
+export async function PATCH(request: Request, context: RouteContext) {
+  return handleInvitationAction(request, context);
+}
+
+export async function POST(request: Request, context: RouteContext) {
+  return handleInvitationAction(request, context, "resend");
+}
+
+export async function DELETE(request: Request, context: RouteContext) {
+  return handleInvitationAction(request, context, "cancel");
 }

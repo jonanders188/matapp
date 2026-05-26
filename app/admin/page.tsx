@@ -285,7 +285,9 @@ export default function AdminPage() {
 
     try {
       const response = await authFetch(`/api/admin/invitations/${invitation.id}`, {
-        method: action === "resend" ? "POST" : "DELETE"
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action })
       });
       const result = await response.json().catch(() => null);
 
