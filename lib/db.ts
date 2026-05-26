@@ -5,7 +5,18 @@ type Household = {
   name: string;
 };
 
+/**
+ * @deprecated Do not use in ordinary Matmakt flows.
+ *
+ * Households are user-owned/selected by id. This helper is kept only as a
+ * temporary escape hatch for old one-off scripts. It is disabled by default so
+ * new API routes do not silently create or use a global "Familien" household.
+ */
 export async function ensureDefaultHousehold(): Promise<Household> {
+  if (process.env.ALLOW_LEGACY_DEFAULT_HOUSEHOLD !== "true") {
+    throw new Error("Legacy default-husholdning er deaktivert. Bruk aktiv household_id i stedet.");
+  }
+
   const supabase = getSupabaseAdmin();
   const name = process.env.DEFAULT_HOUSEHOLD_NAME ?? "Familien";
 

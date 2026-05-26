@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdminAccess } from "@/lib/admin-guard";
+import { requireCurrentHousehold } from "@/lib/current-household";
 import { generateProductAlternatives } from "@/lib/alternative-engine";
 
 export async function POST(request: Request) {
@@ -8,7 +9,8 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json().catch(() => ({}));
-    const result = await generateProductAlternatives({ limit: Number(body?.limit ?? 50) });
+    const { householdId } = await requireCurrentHousehold(request);
+    const result = await generateProductAlternatives({ householdId, limit: Number(body?.limit ?? 50) });
     return NextResponse.json(result);
   } catch (error) {
     console.error("[api/alternatives/generate] POST feilet", error);

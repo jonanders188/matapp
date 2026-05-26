@@ -1,4 +1,3 @@
-import { ensureDefaultHousehold } from "@/lib/db";
 import { alternativeRulesForProduct, productIsAlreadyPrivateLabel } from "@/lib/alternative-rules";
 import { searchKassalappProducts, type KassalappProduct } from "@/lib/kassalapp";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
@@ -60,14 +59,17 @@ function pickBestCandidate(source: ProductRow, sourcePrice: number | null, candi
   return valid[0]?.candidate ?? null;
 }
 
-export async function generateProductAlternatives({ limit = 50 }: { limit?: number } = {}) {
+export async function generateProductAlternatives({ householdId, limit = 50 }: { householdId: string; limit?: number }) {
   const supabase = getSupabaseAdmin();
-  const household = await ensureDefaultHousehold();
+
+  if (!householdId) {
+    throw new Error("Mangler aktiv husholdning for alternativgenerering");
+  }
 
   const productsResult = await supabase
     .from("products")
     .select("id, household_id, name, brand, category, ean, created_at")
-    .eq("household_id", household.id)
+    .eq("household_id", householdId)
     .order("created_at", { ascending: false })
     .limit(Math.min(Math.max(limit, 1), 100));
 
@@ -125,7 +127,7 @@ export async function generateProductAlternatives({ limit = 50 }: { limit?: numb
         const confidence = Math.min(0.98, Math.max(0.1, rule.confidence + brandScore(candidate, rule.preferredBrands) + productNameScore(product, candidate)));
 
         const payload = {
-          household_id: household.id,
+          household_id: householdId,
           product_id: product.id,
           alternative_name: candidate.name,
           alternative_brand: candidate.brand ?? null,
@@ -176,7 +178,7 @@ export async function generateProductAlternatives({ limit = 50 }: { limit?: numb
   }
 
   return {
-    household,
+    householdId,
     scanned: products.length,
     createdOrUpdated: createdOrUpdated.length,
     skipped,

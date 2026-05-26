@@ -1,9 +1,8 @@
 import { requireAdminAccess } from "@/lib/admin-guard";
 import { NextResponse } from "next/server";
 import { hasKassalappKey } from "@/lib/kassalapp";
-import { ensureDefaultHousehold } from "@/lib/db";
 import { getSupabaseAdmin, getSupabaseConfigStatus } from "@/lib/supabase-server";
-import { adminSecretStatus, requireAdminSecret } from "@/lib/admin-guard";
+import { adminSecretStatus } from "@/lib/admin-guard";
 
 type TableName =
   | "households"
@@ -44,20 +43,17 @@ export async function GET(request: Request) {
   const env = {
     supabaseConfigured: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY),
     kassalappConfigured: hasKassalappKey(),
-    defaultHouseholdName: process.env.DEFAULT_HOUSEHOLD_NAME ?? "Familien",
     supabase: getSupabaseConfigStatus(),
     admin: adminSecretStatus()
   };
 
   try {
-    const household = await ensureDefaultHousehold();
     const tables = await Promise.all(TABLES.map((table) => countTable(table)));
     const missingOrBroken = tables.filter((table) => !table.ok).map((table) => table.table);
 
     return NextResponse.json({
       ok: missingOrBroken.length === 0,
       env,
-      household,
       tables,
       missingOrBroken,
       nextSteps: [

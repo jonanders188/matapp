@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { requireAdminAccess } from "@/lib/admin-guard";
-import { ensureDefaultHousehold } from "@/lib/db";
 import { requireCurrentHousehold } from "@/lib/current-household";
 import { lookupKassalappProductsWithPricesByEan, productMetadataPayload, searchKassalappProducts, type KassalappProduct } from "@/lib/kassalapp";
 import { insertPriceObservations, priceProductsForProduct } from "@/lib/price-observations";
@@ -31,13 +30,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   try {
     const { id } = await context.params;
     const supabase = getSupabaseAdmin();
-    let householdId: string;
-    try {
-      householdId = (await requireCurrentHousehold(request)).householdId;
-    } catch {
-      const household = await ensureDefaultHousehold();
-      householdId = household.id;
-    }
+    const { householdId } = await requireCurrentHousehold(request);
 
     const householdProductResult = await supabase
       .from("household_products")

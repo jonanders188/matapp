@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdminAccess } from "@/lib/admin-guard";
+import { requireCurrentHousehold } from "@/lib/current-household";
 import { TOP_50_PRODUCTS, type TopProductSeed } from "@/lib/top-products";
 import { normalizeCategory, packageSize, productMetadataPayload, searchKassalappProducts, type KassalappProduct } from "@/lib/kassalapp";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
@@ -60,30 +61,6 @@ function productPayload(seed: TopProductSeed, product: KassalappProduct) {
   };
 }
 
-async function ensureHousehold() {
-  const supabase = getSupabaseAdmin();
-  const name = process.env.DEFAULT_HOUSEHOLD_NAME ?? "Familien";
-
-  const existing = await supabase
-    .from("households")
-    .select("id, name")
-    .eq("name", name)
-    .order("created_at", { ascending: true })
-    .limit(1);
-
-  if (existing.error) throw existing.error;
-  if (existing.data?.[0]) return existing.data[0];
-
-  const created = await supabase
-    .from("households")
-    .insert({ name, monthly_budget: 0 })
-    .select("id, name")
-    .limit(1);
-
-  if (created.error) throw created.error;
-  if (!created.data?.[0]) throw new Error("Kunne ikke opprette household");
-  return created.data[0];
-}
 
 async function findExistingProduct(_householdId: string, seed: TopProductSeed, product: KassalappProduct) {
   const supabase = getSupabaseAdmin();
@@ -262,12 +239,12 @@ export async function POST(request: Request) {
       .filter((seed) => !selectedKeys.size || selectedKeys.has(seed.key))
       .slice(0, limit);
 
-    const household = await ensureHousehold();
+    const { householdId } = await requireCurrentHousehold(request);
     const results = [];
 
     for (const seed of seeds) {
       try {
-        results.push(await importOne(seed, household.id, dryRun));
+        results.push(await importOne(seed, householdId, dryRun));
       } catch (error) {
         results.push({
           key: seed.key,
@@ -281,7 +258,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       dryRun,
-      household,
+      householdId,
       requested: seeds.length,
       created: results.filter((result) => result.status === "created").length,
       updated: results.filter((result) => result.status === "updated").length,
