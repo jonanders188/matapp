@@ -2,13 +2,16 @@ import { NextResponse } from "next/server";
 import { apiErrorResponse, requireCurrentHousehold } from "@/lib/current-household";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
 function requireAdminRole(role: string) {
   if (role !== "admin") {
-    throw Object.assign(new Error("Kun admin kan endre invitasjoner"), { status: 403 });
+    throw Object.assign(new Error("Kun admin kan håndtere invitasjoner"), { status: 403 });
   }
 }
 
@@ -20,10 +23,9 @@ function inviteToken() {
 }
 
 function appOrigin(request: Request) {
-  const origin = request.headers.get("origin")?.trim();
-  if (origin?.includes("localhost") || origin?.includes("127.0.0.1")) return origin.replace(/\/$/, "");
   const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim();
   if (configured) return configured.replace(/\/$/, "");
+  const origin = request.headers.get("origin")?.trim();
   if (origin) return origin.replace(/\/$/, "");
   return "http://localhost:3000";
 }
@@ -60,6 +62,7 @@ function invitationEmailHtml(params: { householdName: string; acceptUrl: string 
             <a href="${acceptUrl}" style="display:inline-block; background:#16a34a; color:#ffffff; text-decoration:none; font-size:16px; font-weight:700; padding:14px 22px; border-radius:999px;">Godkjenn invitasjon</a>
           </td></tr>
           <tr><td style="padding:0 32px 24px 32px;">
+            <p style="font-size:14px; line-height:1.6; color:#64748b;">Alle i husholdningen kan skanne hjemmevarer, bygge basisvarer og bruke felles prisdata.</p>
             <p style="font-size:13px; line-height:1.6; color:#94a3b8;">Hvis knappen ikke virker, kopier og lim inn denne lenken i nettleseren:<br /><span style="word-break:break-all;">${acceptUrl}</span></p>
           </td></tr>
           <tr><td style="padding:20px 32px; background:#f1f5f9;">
@@ -76,12 +79,12 @@ function invitationEmailHtml(params: { householdName: string; acceptUrl: string 
 async function sendInvitationEmail(params: { to: string; householdName: string; acceptUrl: string }) {
   const apiKey = process.env.RESEND_API_KEY?.trim();
   if (!apiKey) {
-    throw Object.assign(new Error("RESEND_API_KEY mangler. Legg API-nøkkelen fra Resend i .env.local og Vercel env."), { status: 500 });
+    throw Object.assign(new Error("RESEND_API_KEY mangler"), { status: 500 });
   }
 
   const from = process.env.RESEND_FROM_EMAIL?.trim() || "Matmakt <no-reply@matmakt.no>";
   const replyTo = process.env.RESEND_REPLY_TO_EMAIL?.trim();
-  const body: Record<string, unknown> = {
+  const payload: Record<string, unknown> = {
     from,
     to: params.to,
     subject: `Invitasjon til ${params.householdName} i Matmakt`,
@@ -89,7 +92,7 @@ async function sendInvitationEmail(params: { to: string; householdName: string; 
     text: `Du er invitert til ${params.householdName} i Matmakt. Godkjenn invitasjonen her: ${params.acceptUrl}`
   };
 
-  if (replyTo) body.reply_to = replyTo;
+  if (replyTo) payload.reply_to = replyTo;
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -97,7 +100,7 @@ async function sendInvitationEmail(params: { to: string; householdName: string; 
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify(body)
+    body: JSON.stringify(payload)
   });
 
   if (!response.ok) {
@@ -106,127 +109,72 @@ async function sendInvitationEmail(params: { to: string; householdName: string; 
   }
 }
 
-async function loadPendingInvitation(id: string, householdId: string) {
-  const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("household_invitations")
-    .select("id, household_id, email, display_name, role, token, status, expires_at")
-    .eq("id", id)
-    .eq("household_id", householdId)
-    .maybeSingle();
-
-  if (error) throw error;
-  if (!data) {
-    throw Object.assign(new Error("Invitasjonen finnes ikke"), { status: 404 });
-  }
-  if (String(data.status ?? "") !== "pending") {
-    throw Object.assign(new Error("Invitasjonen er ikke aktiv lenger"), { status: 409 });
-  }
-
-  return data as {
-    id: string;
-    household_id: string;
-    email: string;
-    display_name: string | null;
-    role: string | null;
-    token: string | null;
-    status: string | null;
-    expires_at: string | null;
-  };
-}
-
-async function householdName(householdId: string) {
-  const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("households")
-    .select("name")
-    .eq("id", householdId)
-    .maybeSingle();
-
-  if (error) throw error;
-  return String(data?.name ?? "husholdningen").trim() || "husholdningen";
-}
-
 export async function PATCH(request: Request, context: RouteContext) {
   try {
+    const { id } = await context.params;
     const current = await requireCurrentHousehold(request);
     requireAdminRole(current.role);
-    const { id } = await context.params;
 
-    const invitation = await loadPendingInvitation(id, current.householdId);
-    const token = inviteToken();
-    const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+    const body = (await request.json().catch(() => ({}))) as { action?: unknown };
+    const action = String(body.action ?? "").trim();
+    if (!id) return NextResponse.json({ error: "Invitasjons-ID mangler" }, { status: 400 });
+    if (action !== "resend" && action !== "cancel") {
+      return NextResponse.json({ error: "Ukjent invitasjonshandling" }, { status: 400 });
+    }
 
     const supabase = getSupabaseAdmin();
-    const { data: updated, error: updateError } = await supabase
+    const { data: invitation, error: invitationError } = await supabase
       .from("household_invitations")
-      .update({
-        token,
-        expires_at: expiresAt,
-        updated_at: new Date().toISOString()
-      })
-      .eq("id", invitation.id)
+      .select("id, household_id, email, display_name, role, status, token, expires_at")
+      .eq("id", id)
       .eq("household_id", current.householdId)
-      .eq("status", "pending")
-      .select("id, email, token, expires_at")
+      .maybeSingle();
+
+    if (invitationError) throw invitationError;
+    if (!invitation) return NextResponse.json({ error: "Invitasjonen finnes ikke" }, { status: 404 });
+    if (invitation.status !== "pending") {
+      return NextResponse.json({ error: "Invitasjonen er ikke lenger ventende" }, { status: 409 });
+    }
+
+    if (action === "cancel") {
+      const { data, error } = await supabase
+        .from("household_invitations")
+        .update({ status: "cancelled", updated_at: new Date().toISOString() })
+        .eq("id", id)
+        .eq("household_id", current.householdId)
+        .select("id, email, status, expires_at, updated_at")
+        .single();
+
+      if (error) throw error;
+      return NextResponse.json({ data, message: "Invitasjonen er avbrutt." });
+    }
+
+    const token = inviteToken();
+    const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: updatedInvitation, error: updateError } = await supabase
+      .from("household_invitations")
+      .update({ token, expires_at: expiresAt, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .eq("household_id", current.householdId)
+      .select("id, household_id, email, display_name, role, status, token, expires_at, created_at, updated_at")
       .single();
 
     if (updateError) throw updateError;
 
-    const name = await householdName(current.householdId);
+    const { data: household, error: householdError } = await supabase
+      .from("households")
+      .select("name")
+      .eq("id", current.householdId)
+      .single();
 
-    await supabase
-      .from("beta_allowed_emails")
-      .upsert({ email: String(updated.email).toLowerCase(), note: `Invitert til ${name}` }, { onConflict: "email" })
-      .then(() => undefined, () => undefined);
+    if (householdError) throw householdError;
+    const householdName = String(household?.name ?? "husholdningen").trim() || "husholdningen";
+    const acceptUrl = `${appOrigin(request)}/invitations/accept?token=${encodeURIComponent(token)}`;
+    await sendInvitationEmail({ to: String(updatedInvitation.email), householdName, acceptUrl });
 
-    const acceptUrl = `${appOrigin(request)}/invitations/accept?token=${encodeURIComponent(String(updated.token))}`;
-    await sendInvitationEmail({ to: String(updated.email), householdName: name, acceptUrl });
-
-    return NextResponse.json({
-      data: {
-        id: updated.id,
-        email: updated.email,
-        expires_at: updated.expires_at,
-        message: `Ny invitasjon er sendt til ${updated.email}.`
-      }
-    });
+    return NextResponse.json({ data: updatedInvitation, message: "Invitasjonen er sendt på nytt." });
   } catch (error) {
     console.error("[api/admin/invitations/[id]] PATCH", error);
-    return apiErrorResponse(error);
-  }
-}
-
-export async function DELETE(request: Request, context: RouteContext) {
-  try {
-    const current = await requireCurrentHousehold(request);
-    requireAdminRole(current.role);
-    const { id } = await context.params;
-
-    const invitation = await loadPendingInvitation(id, current.householdId);
-    const supabase = getSupabaseAdmin();
-
-    const { error } = await supabase
-      .from("household_invitations")
-      .update({
-        status: "cancelled",
-        updated_at: new Date().toISOString()
-      })
-      .eq("id", invitation.id)
-      .eq("household_id", current.householdId)
-      .eq("status", "pending");
-
-    if (error) throw error;
-
-    return NextResponse.json({
-      data: {
-        id: invitation.id,
-        email: invitation.email,
-        message: `Invitasjonen til ${invitation.email} er avbrutt.`
-      }
-    });
-  } catch (error) {
-    console.error("[api/admin/invitations/[id]] DELETE", error);
     return apiErrorResponse(error);
   }
 }
