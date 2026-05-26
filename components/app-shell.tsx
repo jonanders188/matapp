@@ -10,7 +10,8 @@ import {
   ShieldCheck,
   Smartphone,
   Sparkles,
-  Tags
+  Tags,
+  Users
 } from "lucide-react";
 import { cx } from "@/lib/utils";
 import { AuthStatus } from "@/components/auth-status";
@@ -64,7 +65,8 @@ const navSections: { title: string; items: NavItem[] }[] = [
     title: "Oppsett",
     items: [
       { label: "Admin", href: "/admin", icon: Settings, aliases: ["Innstillinger", "Oppsett", "Integrasjoner"], description: "Husholdning og butikker", audience: "household-admin" },
-      { label: "Systemadmin", href: "/admin/product-groups", icon: ShieldCheck, aliases: ["Produktgrupper", "System Admin"], description: "Globale produktgrupper", audience: "system-admin" }
+      { label: "Systemadmin", href: "/admin/product-groups", icon: ShieldCheck, aliases: ["Produktgrupper", "System Admin"], description: "Globale produktgrupper", audience: "system-admin" },
+      { label: "Brukere", href: "/admin/users", icon: Users, aliases: ["Systembrukere", "Auth-brukere"], description: "Auth og husholdninger", audience: "system-admin" }
     ]
   }
 ];
@@ -101,7 +103,7 @@ function activeRequiresHouseholdAdmin(active: string) {
 }
 
 function activeRequiresSystemAdmin(active: string) {
-  return ["Systemadmin", "Produktgrupper", "System Admin"].includes(active);
+  return ["Systemadmin", "Produktgrupper", "System Admin", "Brukere", "Systembrukere", "Auth-brukere"].includes(active);
 }
 
 function roleLabel(role: HouseholdSummary["role"] | null | undefined) {

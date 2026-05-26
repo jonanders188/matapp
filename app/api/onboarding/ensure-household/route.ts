@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { apiErrorResponse, requireAuthenticatedUser } from "@/lib/current-household";
 import { getSupabaseAdmin } from "@/lib/supabase-server";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 function displayNameFromEmail(email: string | null) {
   if (!email) return "Eier";
   return email.split("@")[0]?.replace(/[._-]+/g, " ").trim() || "Eier";
@@ -25,22 +28,21 @@ export async function POST(request: Request) {
     const supabase = getSupabaseAdmin();
     const selectedHouseholdId = requestedHouseholdId(request);
 
-    let membershipQuery = supabase
+    // Ikke la en gammel aktiv husholdning i localStorage blokkere en ny bruker.
+    // Vi henter alltid alle medlemskap først, velger valgt husholdning hvis den er gyldig,
+    // ellers første reelle medlemskap. Hvis ingen finnes, oppretter vi Hjemme.
+    const { data: memberships, error: existingError } = await supabase
       .from("household_members")
-      .select("household_id, role")
-      .eq("user_id", user.userId);
-
-    if (selectedHouseholdId) {
-      membershipQuery = membershipQuery.eq("household_id", selectedHouseholdId);
-    }
-
-    const { data: memberships, error: existingError } = await membershipQuery
-      .order("created_at", { ascending: true })
-      .limit(1);
+      .select("household_id, role, created_at")
+      .eq("user_id", user.userId)
+      .order("created_at", { ascending: true });
 
     if (existingError) throw existingError;
 
-    const existing = memberships?.[0] ?? null;
+    const existingMemberships = memberships ?? [];
+    const existing = selectedHouseholdId
+      ? existingMemberships.find((membership) => membership.household_id === selectedHouseholdId) ?? existingMemberships[0]
+      : existingMemberships[0];
 
     if (existing?.household_id) {
       return NextResponse.json({
@@ -52,15 +54,9 @@ export async function POST(request: Request) {
       });
     }
 
-    if (selectedHouseholdId) {
-      return NextResponse.json(
-        { error: "Invitasjonen er ikke gyldig for denne e-posten, eller du er ikke medlem av valgt husholdning." },
-        { status: 403 }
-      );
-    }
-
     const { data: household, error: householdError } = await supabase
       .from("households")
+      // Husholdningsnavn er ikke globalt unikt. Mange brukere skal kunne ha "Hjemme".
       .insert({ name: "Hjemme", monthly_budget: 0 })
       .select("id, name")
       .single();
@@ -83,7 +79,8 @@ export async function POST(request: Request) {
         household_id: household.id,
         household_name: household.name,
         role: "admin",
-        created: true
+        created: true,
+        next_action: "update_household"
       }
     });
   } catch (error) {

@@ -35,6 +35,42 @@ function requestedHouseholdId(request: Request) {
   }
 }
 
+function displayNameFromEmail(email: string | null) {
+  if (!email) return "Eier";
+  return email.split("@")[0]?.replace(/[._-]+/g, " ").trim() || "Eier";
+}
+
+async function createDefaultHouseholdForUser(user: { userId: string; email: string | null }) {
+  const supabase = getSupabaseAdmin();
+
+  const { data: household, error: householdError } = await supabase
+    .from("households")
+    // Husholdningsnavn er ikke globalt unikt. Mange brukere skal kunne ha "Hjemme".
+      .insert({ name: "Hjemme", monthly_budget: 0 })
+    .select("id, name")
+    .single();
+
+  if (householdError) throw householdError;
+
+  const { error: memberError } = await supabase
+    .from("household_members")
+    .insert({
+      household_id: household.id,
+      user_id: user.userId,
+      display_name: displayNameFromEmail(user.email),
+      role: "admin"
+    });
+
+  if (memberError) throw memberError;
+
+  return {
+    household_id: household.id,
+    role: "admin",
+    display_name: displayNameFromEmail(user.email),
+    created_at: new Date().toISOString()
+  } satisfies HouseholdMemberRow;
+}
+
 export async function GET(request: Request) {
   try {
     const user = await requireAuthenticatedUser(request);
@@ -49,7 +85,15 @@ export async function GET(request: Request) {
 
     if (membershipError) throw membershipError;
 
-    const memberships = (membershipsRaw ?? []) as HouseholdMemberRow[];
+    let memberships = (membershipsRaw ?? []) as HouseholdMemberRow[];
+
+    // Første gang en registrert bruker logger inn uten husholdning,
+    // oppretter vi en standard "Hjemme"-husholdning og gjør brukeren til Eier/admin.
+    if (memberships.length === 0) {
+      const createdMembership = await createDefaultHouseholdForUser(user);
+      memberships = [createdMembership];
+    }
+
     const householdIds = [...new Set(memberships.map((membership) => membership.household_id).filter(Boolean))];
 
     let householdById = new Map<string, HouseholdRow>();
