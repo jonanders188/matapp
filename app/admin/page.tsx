@@ -434,7 +434,11 @@ export default function AdminPage() {
   }, []);
 
   const adminCount = useMemo(() => payload?.members.filter((member) => member.role === "admin").length ?? 0, [payload]);
-  const pendingInvites = payload?.invitations?.filter((invite) => invite.status === "pending") ?? [];
+  const activeMemberEmails = useMemo(
+    () => new Set((payload?.members ?? []).map((member) => String(member.email ?? "").trim().toLowerCase()).filter(Boolean)),
+    [payload]
+  );
+  const pendingInvites = payload?.invitations?.filter((invite) => invite.status === "pending" && !activeMemberEmails.has(String(invite.email ?? "").trim().toLowerCase())) ?? [];
   const activeStores = stores.filter((store) => store.is_enabled !== false);
   const disabledStores = stores.filter((store) => store.is_enabled === false);
   const setupSteps = [

@@ -50,8 +50,6 @@ export async function GET(request: Request) {
     if (membersResult.error) throw membersResult.error;
     if (invitationsResult.error) throw invitationsResult.error;
 
-    const invitations = invitationsResult.data ?? [];
-
     const members = await Promise.all(
       (membersResult.data ?? []).map(async (member) => ({
         ...member,
@@ -60,6 +58,32 @@ export async function GET(request: Request) {
       }))
     );
 
+    const memberEmailSet = new Set(
+      members
+        .map((member) => String(member.email ?? "").trim().toLowerCase())
+        .filter(Boolean)
+    );
+
+    const rawInvitations = invitationsResult.data ?? [];
+    const staleInvitationIds = rawInvitations
+      .filter((invite) => memberEmailSet.has(String(invite.email ?? "").trim().toLowerCase()))
+      .map((invite) => invite.id)
+      .filter(Boolean);
+
+    if (staleInvitationIds.length > 0) {
+      const { error: staleUpdateError } = await supabase
+        .from("household_invitations")
+        .update({ status: "accepted", accepted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .in("id", staleInvitationIds);
+
+      if (staleUpdateError) {
+        console.warn("[api/admin/household] could not auto-close accepted pending invites", staleUpdateError);
+      }
+    }
+
+    const invitations = rawInvitations.filter(
+      (invite) => !memberEmailSet.has(String(invite.email ?? "").trim().toLowerCase())
+    );
 
     return NextResponse.json({
       data: {

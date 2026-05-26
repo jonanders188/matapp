@@ -198,7 +198,6 @@ export async function POST(request: Request) {
       .update({
         status: "accepted",
         accepted_at: new Date().toISOString(),
-        accepted_by_user_id: userResult.user.id,
         updated_at: new Date().toISOString()
       })
       .eq("id", invitation.id);
