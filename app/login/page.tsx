@@ -22,13 +22,19 @@ function LoginContent() {
     return next.startsWith("/") ? next : "/dashboard";
   }
 
+  function cleanEmail() {
+    return email.trim().toLowerCase();
+  }
+
+  const isInvitationLogin = safeNext().startsWith("/invitations/accept");
+
   async function signInWithPassword(event: React.FormEvent) {
     event.preventDefault();
     setLoading(true);
     setError(null);
     setMessage(null);
     const supabase = getSupabaseBrowserClient();
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email: cleanEmail(), password });
     setLoading(false);
     if (signInError) {
       setError(signInError.message);
@@ -42,8 +48,8 @@ function LoginContent() {
     setError(null);
     setMessage(null);
     const supabase = getSupabaseBrowserClient();
-    const { error: signUpError } = await supabase.auth.signUp({
-      email,
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email: cleanEmail(),
       password,
       options: { emailRedirectTo: `${window.location.origin}${safeNext()}` }
     });
@@ -52,7 +58,11 @@ function LoginContent() {
       setError(signUpError.message);
       return;
     }
-    setMessage("Kontoen er opprettet. Sjekk e-posten din for å bekrefte kontoen. Sjekk også søppelpost hvis den ikke kommer frem.");
+    if (signUpData.session) {
+      window.location.href = safeNext();
+      return;
+    }
+    setMessage("Kontoen er opprettet. Sjekk e-posten din for å bekrefte kontoen. Etter bekreftelse kommer du tilbake til riktig sted. Sjekk også søppelpost hvis den ikke kommer frem.");
   }
 
   async function resendSignupConfirmation() {
@@ -62,7 +72,7 @@ function LoginContent() {
     const supabase = getSupabaseBrowserClient();
     const { error: resendError } = await supabase.auth.resend({
       type: "signup",
-      email,
+      email: cleanEmail(),
       options: { emailRedirectTo: `${window.location.origin}${safeNext()}` }
     });
     setLoading(false);
@@ -78,7 +88,7 @@ function LoginContent() {
     setError(null);
     setMessage(null);
     const supabase = getSupabaseBrowserClient();
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(cleanEmail(), {
       redirectTo: `${window.location.origin}/set-password?next=${encodeURIComponent(safeNext())}`
     });
     setLoading(false);
@@ -95,7 +105,7 @@ function LoginContent() {
     setMessage(null);
     const supabase = getSupabaseBrowserClient();
     const { error: otpError } = await supabase.auth.signInWithOtp({
-      email,
+      email: cleanEmail(),
       options: { emailRedirectTo: `${window.location.origin}${safeNext()}` }
     });
     setLoading(false);
@@ -115,6 +125,7 @@ function LoginContent() {
         </div>
         <h1 className="page-heading">Logg inn</h1>
         <p className="mt-2 text-sm text-muted">Bruk e-post. Ved invitasjon må du logge inn med e-posten invitasjonen gjelder.</p>
+        {isInvitationLogin ? <p className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm font-bold text-brand">Du er på vei inn via en husholdningsinvitasjon. Logg inn eller opprett konto med samme e-post som invitasjonen ble sendt til.</p> : null}
         <form onSubmit={signInWithPassword} className="mt-6 space-y-4">
           <label className="block text-sm font-medium text-slate-700">
             E-post
