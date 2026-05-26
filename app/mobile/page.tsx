@@ -639,8 +639,15 @@ export default function MobileScanPage() {
 
 
   useEffect(() => {
+    if (!selectedStore || lookup) return;
     startCamera().catch(() => undefined);
-  }, []);
+
+    return () => {
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+      setCameraReady(false);
+    };
+  }, [selectedStore?.storeKey, lookup]);
 
   useEffect(() => {
     if (!cameraReady) return;
@@ -717,54 +724,67 @@ export default function MobileScanPage() {
   return (
     <main className="min-h-screen bg-slate-950 px-3 py-3 text-white">
       <div className="mx-auto max-w-xl space-y-3">
-        {!lookup ? (
-          <section className={`overflow-hidden rounded-[2rem] ring-1 ${selectedStore ? "bg-black ring-emerald-400/50" : "bg-slate-900 ring-white/10"}`}>
+        {!lookup && !selectedStore ? (
+          <section className="rounded-[2rem] bg-white p-4 text-slate-950 shadow-xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Aktiv butikk</p>
+                <p className="mt-1 text-sm font-bold text-slate-500">Velg butikk før kameraet åpnes.</p>
+              </div>
+              <Link href="/dashboard" className="rounded-full bg-slate-100 px-3 py-2 text-xs font-black text-slate-700">
+                Dashboard
+              </Link>
+            </div>
+            <div className="mt-3">
+              <select
+                id="active-store"
+                value={selectedStoreKey}
+                onChange={(event) => setSelectedStoreKey(event.target.value)}
+                className="min-w-0 w-full rounded-[1.75rem] border border-slate-200 bg-white px-4 py-5 text-xl font-black outline-none focus:border-emerald-600"
+              >
+                <option value="">Velg butikk</option>
+                {activeStores.map((store) => (
+                  <option key={store.storeKey} value={store.storeKey}>{store.storeName}</option>
+                ))}
+              </select>
+            </div>
+            {!activeStores.length ? (
+              <p className="mt-3 rounded-2xl bg-amber-50 p-3 text-sm font-bold text-amber-800">
+                Ingen aktive butikker funnet. Aktiver butikker i Admin først.
+              </p>
+            ) : (
+              <p className="mt-3 text-sm font-bold text-slate-500">Når butikken er valgt, starter kamera og strekkodeskanning automatisk.</p>
+            )}
+          </section>
+        ) : null}
+
+        {!lookup && selectedStore ? (
+          <section className="overflow-hidden rounded-[2rem] bg-black ring-1 ring-emerald-400/50">
             <div className="relative aspect-[3/4] min-h-[520px] sm:aspect-[4/3] sm:min-h-0">
               <video ref={videoRef} className="h-full w-full object-cover" muted playsInline />
 
-              <div className="absolute left-3 right-3 top-3 z-20 rounded-3xl bg-white p-3 text-slate-950 shadow-2xl">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <label htmlFor="active-store" className="shrink-0 text-xs font-black uppercase tracking-[0.18em] text-slate-500">
-                      Aktiv butikk
-                    </label>
-                    <p className="mt-1 text-sm font-bold text-slate-500">Velg butikk, skann produktet og del faktisk butikkpris.</p>
+              <div className="absolute inset-x-3 top-3 z-20 flex items-center justify-between gap-2 rounded-2xl bg-slate-950/85 px-3 py-2 text-white backdrop-blur">
+                <div className="min-w-0 flex items-center gap-2">
+                  <StoreLogoBadge storeKey={selectedStore.storeKey} storeName={selectedStore.storeName} compact />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-black">{selectedStore.storeName}</p>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedStoreKey("")}
+                      className="text-xs font-bold text-emerald-200"
+                    >
+                      Bytt butikk
+                    </button>
                   </div>
-                  <Link href="/dashboard" className="rounded-full bg-slate-100 px-3 py-2 text-xs font-black text-slate-700">
-                    Dashboard
-                  </Link>
                 </div>
-                <div className="mt-2 flex items-center gap-2">
-                  {selectedStore ? <StoreLogoBadge storeKey={selectedStore.storeKey} storeName={selectedStore.storeName} /> : null}
-                  <select
-                    id="active-store"
-                    value={selectedStoreKey}
-                    onChange={(event) => setSelectedStoreKey(event.target.value)}
-                    className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-4 text-lg font-black outline-none focus:border-emerald-600"
-                  >
-                  <option value="">Velg butikk</option>
-                  {activeStores.map((store) => (
-                    <option key={store.storeKey} value={store.storeKey}>{store.storeName}</option>
-                  ))}
-                  </select>
-                </div>
-                {!activeStores.length ? (
-                  <p className="mt-2 rounded-2xl bg-amber-50 p-3 text-sm font-bold text-amber-800">
-                    Ingen aktive butikker funnet. Aktiver butikker i Admin først.
-                  </p>
-                ) : null}
+                <Link href="/dashboard" className="shrink-0 rounded-full bg-white/10 px-3 py-2 text-xs font-black text-white ring-1 ring-white/10">
+                  Dashboard
+                </Link>
               </div>
 
               <div className="pointer-events-none absolute inset-x-8 top-[56%] h-24 -translate-y-1/2 rounded-3xl border-4 border-emerald-300/80 shadow-[0_0_0_999px_rgba(2,6,23,0.34)]" />
 
-              {!selectedStore ? (
-                <div className="absolute inset-x-5 bottom-6 rounded-3xl bg-slate-950/80 p-4 text-center backdrop-blur">
-                  <p className="text-lg font-black">Velg butikk i menyen over kameraet</p>
-                  <p className="mt-1 text-sm font-bold text-slate-300">Når butikken er valgt, starter strekkodeskanning automatisk.</p>
-                </div>
-              ) : null}
-
-              {cameraPaused && selectedStore ? (
+              {cameraPaused ? (
                 <div className="absolute inset-0 flex items-center justify-center bg-slate-950/75 p-6 text-center">
                   <button type="button" onClick={nextProduct} className="rounded-3xl bg-emerald-300 px-6 py-5 text-xl font-black text-slate-950">
                     Skann neste
@@ -773,21 +793,21 @@ export default function MobileScanPage() {
               ) : null}
 
               {busy ? (
-                <div className="absolute right-4 top-36 rounded-full bg-emerald-300 px-4 py-2 text-sm font-black text-slate-950 shadow-xl">
+                <div className="absolute right-4 top-20 rounded-full bg-emerald-300 px-4 py-2 text-sm font-black text-slate-950 shadow-xl">
                   Henter pris...
                 </div>
               ) : null}
             </div>
 
-            <div className={`p-4 text-sm font-bold ${selectedStore ? "bg-emerald-300/15 text-emerald-100" : "bg-white/10 text-slate-200"}`}>
+            <div className="bg-emerald-300/15 p-4 text-sm font-bold text-emerald-100">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-xs font-black uppercase tracking-[0.2em] opacity-75">{selectedStore?.storeName ?? "Klar når butikk er valgt"}</p>
+                  <p className="text-xs font-black uppercase tracking-[0.2em] opacity-75">{selectedStore.storeName}</p>
                   <p className="mt-1 text-base font-black">{phaseTitle(phase)}</p>
                   {message ? <p className="mt-1 opacity-85">{message}</p> : null}
                   {cameraError ? <p className="mt-2 text-amber-200">{cameraError}</p> : null}
                 </div>
-                {cameraPaused && selectedStore ? (
+                {cameraPaused ? (
                   <button type="button" onClick={nextProduct} className="shrink-0 rounded-2xl bg-white px-4 py-3 text-sm font-black text-slate-950">
                     Start
                   </button>
@@ -801,25 +821,32 @@ export default function MobileScanPage() {
 
         {lookup ? (
           <div className="flex flex-col gap-3">
-            <section className="rounded-[2rem] bg-white p-5 text-slate-950 shadow-xl">
-              <div className="flex items-start justify-between gap-3">
+            <section className="rounded-[1.5rem] bg-white p-3 text-slate-950 shadow-xl">
+              <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Aktiv butikk</p>
-                  <div className="mt-2 flex flex-wrap items-center gap-3">
-                    <StoreLogoBadge storeKey={selectedStore?.storeKey} storeName={selectedStore?.storeName} />
+                  <p className="text-[0.65rem] font-black uppercase tracking-[0.18em] text-slate-400">Aktiv butikk</p>
+                  <div className="mt-1 flex min-w-0 items-center gap-2">
+                    <StoreLogoBadge storeKey={selectedStore?.storeKey} storeName={selectedStore?.storeName} compact />
+                    <button
+                      type="button"
+                      onClick={() => setSelectedStoreKey("")}
+                      className="text-xs font-black text-emerald-700"
+                    >
+                      Bytt
+                    </button>
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  <Link href="/dashboard" className="rounded-2xl bg-slate-100 px-4 py-3 text-sm font-black text-slate-700">
+                  <Link href="/dashboard" className="rounded-2xl bg-slate-100 px-3 py-2 text-xs font-black text-slate-700">
                     Dashboard
                   </Link>
-                  <button type="button" onClick={nextProduct} className="rounded-3xl bg-slate-950 px-5 py-4 text-sm font-black text-white">
+                  <button type="button" onClick={nextProduct} className="rounded-2xl bg-slate-950 px-4 py-2 text-xs font-black text-white">
                     Neste
                   </button>
                 </div>
               </div>
 
-              <div className="mt-4 grid grid-cols-2 gap-2 rounded-3xl bg-slate-100 p-1">
+              <div className="mt-3 grid grid-cols-2 gap-1 rounded-3xl bg-slate-100 p-1">
                 <button
                   type="button"
                   onClick={() => setMobileMode("update_price")}
@@ -859,96 +886,43 @@ export default function MobileScanPage() {
             </section>
 
             {mobileMode !== "best_prices" ? (
-              <section className="order-20 rounded-[2rem] bg-white p-5 text-slate-950 shadow-xl ring-2 ring-emerald-200">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Del butikkpris</p>
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <StoreLogoBadge storeKey={selectedStore?.storeKey} storeName={selectedStore?.storeName} />
-                    </div>
-                    {selectedStorePrice?.price ? (
-                      <p className="mt-2 text-sm font-bold text-slate-500">
-                        Sist kjent her: {kr(selectedStorePrice.price)} · {formatDate(selectedStorePrice.observedAt)}
-                      </p>
-                    ) : (
-                      <p className="mt-2 text-sm font-bold text-slate-500">Ingen kjent pris her. Skriv butikkprisen hvis du vil oppdatere fellesskapet.</p>
-                    )}
-                  </div>
-                  {selectedStorePrice?.price ? <p className="text-3xl font-black text-emerald-700">{kr(selectedStorePrice.price)}</p> : null}
-                </div>
-
-                {productIsUnsaved ? (
-                  <div className="mt-4 rounded-2xl bg-amber-50 p-3">
-                    <p className="text-sm font-black text-amber-900">Varen finnes ikke i produktregisteret ennå.</p>
-                    <div className="mt-3 grid grid-cols-3 gap-2 text-sm font-black">
-                      <button type="button" onClick={() => setSaveMode("basis")} className={`rounded-2xl px-3 py-3 ${saveMode === "basis" ? "bg-emerald-700 text-white" : "bg-white text-slate-700"}`}>Basis</button>
-                      <button type="button" onClick={() => setSaveMode("global")} className={`rounded-2xl px-3 py-3 ${saveMode === "global" ? "bg-emerald-700 text-white" : "bg-white text-slate-700"}`}>Global</button>
-                      <button type="button" onClick={() => setSaveMode("none")} className={`rounded-2xl px-3 py-3 ${saveMode === "none" ? "bg-slate-800 text-white" : "bg-white text-slate-700"}`}>Ikke lagre</button>
-                    </div>
-                  </div>
-                ) : null}
-
-                <div className="mt-4 rounded-[1.5rem] border-2 border-emerald-100 bg-white p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <label htmlFor="manual-price" className="text-sm font-black uppercase tracking-[0.18em] text-slate-500">
-                      Ny pris
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setManualPrice("");
-                        window.setTimeout(() => priceInputRef.current?.focus(), 0);
-                      }}
-                      className="rounded-full bg-slate-100 px-3 py-2 text-xs font-black text-slate-700"
-                    >
-                      Tøm
-                    </button>
-                  </div>
-                  <input
-                    ref={priceInputRef}
-                    id="manual-price"
-                    value={manualPrice}
-                    onChange={(event) => setManualPrice(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key !== "Enter") return;
-                      const price = parsePrice(manualPrice);
-                      if (!price) return;
-                      event.preventDefault();
-                      savePrice(price).catch(() => undefined);
-                    }}
-                    inputMode="decimal"
-                    placeholder="f.eks. 29,90"
-                    className="mt-3 w-full rounded-3xl border-2 border-slate-200 px-4 py-5 text-4xl font-black text-slate-950 outline-none focus:border-emerald-500"
-                  />
-                  <div className="mt-3 space-y-2">
-                    {manualUnitPreview?.unit_price != null ? (
-                      <p className="rounded-2xl bg-emerald-50 p-3 text-sm font-black text-emerald-800">
-                        Beregnet enhetspris: {kr(manualUnitPreview.unit_price)} / {displayUnitSuffix(manualUnitPreview.comparison_unit)}
-                        {manualUnitPreview.package_quantity ? ` · pakning ${manualUnitPreview.package_quantity} ${manualUnitPreview.package_unit ?? ""}` : ""}
-                      </p>
-                    ) : parsedManualPrice ? (
-                      <p className="rounded-2xl bg-amber-50 p-3 text-sm font-black text-amber-900">
-                        Vi mangler trygg pakningsstørrelse. Prisen kan lagres, men brukes ikke i analyser før pakningen er rettet.
-                      </p>
-                    ) : null}
-                    {manualPriceWarning ? (
-                      <p className="rounded-2xl bg-rose-50 p-3 text-sm font-black text-rose-800">{manualPriceWarning}</p>
-                    ) : null}
-                    <p className="text-sm font-semibold text-slate-500">
-                      Registrer prisen du ser eller betalte. Matmakt skiller kampanjer og analyseinfo i egne import-/analyselag.
+              <section className="order-20 rounded-[2rem] bg-white p-4 text-slate-950 shadow-xl ring-2 ring-emerald-200">
+                <input
+                  ref={priceInputRef}
+                  id="manual-price"
+                  value={manualPrice}
+                  onChange={(event) => setManualPrice(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter") return;
+                    const price = parsePrice(manualPrice);
+                    if (!price) return;
+                    event.preventDefault();
+                    savePrice(price).catch(() => undefined);
+                  }}
+                  inputMode="decimal"
+                  placeholder="f.eks. 29,90"
+                  className="w-full rounded-3xl border-2 border-slate-200 px-4 py-5 text-4xl font-black text-slate-950 outline-none focus:border-emerald-500"
+                />
+                <div className="mt-3 space-y-2">
+                  {manualUnitPreview?.unit_price != null ? (
+                    <p className="rounded-2xl bg-emerald-50 p-3 text-sm font-black text-emerald-800">
+                      Beregnet enhetspris: {kr(manualUnitPreview.unit_price)} / {displayUnitSuffix(manualUnitPreview.comparison_unit)}
+                      {manualUnitPreview.package_quantity ? ` · pakning ${manualUnitPreview.package_quantity} ${manualUnitPreview.package_unit ?? ""}` : ""}
                     </p>
-                  </div>
+                  ) : null}
+                  {manualPriceWarning ? (
+                    <p className="rounded-2xl bg-rose-50 p-3 text-sm font-black text-rose-800">{manualPriceWarning}</p>
+                  ) : null}
                 </div>
 
                 <button
                   type="button"
                   onClick={() => savePrice(parsePrice(manualPrice) ?? undefined)}
-                  disabled={busy || !lookup.product || !parsedManualPrice || (productIsUnsaved && saveMode === "none")}
+                  disabled={busy || !lookup.product || !parsedManualPrice}
                   className="mt-4 w-full rounded-3xl bg-emerald-700 px-4 py-5 text-xl font-black text-white disabled:opacity-50"
                 >
-                  Del {parsedManualPrice ? kr(parsedManualPrice) : "pris"} hos {selectedStore?.storeName}
+                  Del pris hos {selectedStore?.storeName}
                 </button>
-                {productIsUnsaved && saveMode === "none" ? <p className="mt-3 text-sm font-semibold text-slate-500">Ikke lagre brukes bare for å se priser. Prisen kan ikke lagres uten produkt.</p> : null}
               </section>
             ) : null}
 
@@ -959,7 +933,6 @@ export default function MobileScanPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <StoreLogoBadge storeKey={price.storeKey} storeName={price.storeName} />
-                        <p className="mt-2 text-xs font-semibold text-slate-500">{formatDate(price.observedAt)} · {price.source ?? "Ukjent kilde"}</p>
                       </div>
                       <div className="text-right">
                         <p className="text-xl font-black text-emerald-700">{kr(price.price)}</p>
