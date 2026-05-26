@@ -40,13 +40,18 @@ function displayNameFromEmail(email: string | null) {
   return email.split("@")[0]?.replace(/[._-]+/g, " ").trim() || "Eier";
 }
 
+function defaultHouseholdName(email: string | null) {
+  const normalized = String(email ?? "").trim().toLowerCase();
+  return normalized ? `${normalized} Home` : "Hjemme";
+}
+
 async function createDefaultHouseholdForUser(user: { userId: string; email: string | null }) {
   const supabase = getSupabaseAdmin();
 
   const { data: household, error: householdError } = await supabase
     .from("households")
-    // Husholdningsnavn er ikke globalt unikt. Mange brukere skal kunne ha "Hjemme".
-      .insert({ name: "Hjemme", monthly_budget: 0 })
+    // Standardnavn er lett å kjenne igjen i admin, men kan endres av Eier/admin.
+      .insert({ name: defaultHouseholdName(user.email), monthly_budget: 0 })
     .select("id, name")
     .single();
 

@@ -1,0 +1,8 @@
+-- No schema change required.
+-- Default household names are now created by the app as:
+--   <user email> Home
+-- Example:
+--   jon@example.com Home
+--
+-- Household names should still NOT be globally unique. Users/admins can rename
+-- the household later from the admin setup page.
