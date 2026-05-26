@@ -275,6 +275,33 @@ export default function AdminPage() {
     }
   }
 
+  async function handleInvitation(invitation: PendingInvitation, action: "resend" | "cancel") {
+    const label = action === "resend" ? "sende invitasjonen på nytt" : "avbryte invitasjonen";
+    if (action === "cancel" && !window.confirm(`Avbryte invitasjonen til ${invitation.email}?`)) return;
+
+    setSaving(`${action}-invite-${invitation.id}`);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const response = await authFetch(`/api/admin/invitations/${invitation.id}`, {
+        method: action === "resend" ? "POST" : "DELETE"
+      });
+      const result = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(result?.error ?? `Kunne ikke ${label}`);
+      }
+
+      setMessage(result?.data?.message ?? (action === "resend" ? "Invitasjonen er sendt på nytt." : "Invitasjonen er avbrutt."));
+      await loadAdmin();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Kunne ikke ${label}`);
+    } finally {
+      setSaving(null);
+    }
+  }
+
   async function updateMember(memberId: string, updates: Partial<Pick<Member, "display_name" | "role">>) {
     setSaving(memberId);
     setError(null);
@@ -633,10 +660,36 @@ export default function AdminPage() {
                       <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Venter på godkjenning</p>
                       {pendingInvites.map((invite) => {
                         const left = daysLeft(invite.expires_at);
+                        const resendKey = `resend-invite-${invite.id}`;
+                        const cancelKey = `cancel-invite-${invite.id}`;
                         return (
                           <div key={invite.id} className="rounded-2xl bg-slate-50 p-3 text-sm">
-                            <p className="font-black text-slate-900">{invite.email}</p>
-                            <p className="mt-1 text-xs font-semibold text-slate-500">{left === null ? "Invitasjon sendt" : left >= 0 ? `Utløper om ${left} dager` : "Utløpt"}</p>
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                              <div>
+                                <p className="font-black text-slate-900">{invite.email}</p>
+                                <p className="mt-1 text-xs font-semibold text-slate-500">
+                                  {left === null ? "Invitasjon sendt" : left >= 0 ? `Utløper om ${left} dager` : "Utløpt"}
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleInvitation(invite, "resend")}
+                                  disabled={saving === resendKey || saving === cancelKey}
+                                  className="rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs font-black text-brand disabled:opacity-60"
+                                >
+                                  {saving === resendKey ? "Sender..." : "Send på nytt"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleInvitation(invite, "cancel")}
+                                  disabled={saving === resendKey || saving === cancelKey}
+                                  className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-black text-rose-600 disabled:opacity-60"
+                                >
+                                  {saving === cancelKey ? "Avbryter..." : "Avbryt"}
+                                </button>
+                              </div>
+                            </div>
                           </div>
                         );
                       })}

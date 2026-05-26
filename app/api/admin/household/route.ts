@@ -27,7 +27,7 @@ export async function GET(request: Request) {
     requireAdminRole(current.role);
     const supabase = getSupabaseAdmin();
 
-    const [householdResult, membersResult] = await Promise.all([
+    const [householdResult, membersResult, invitationsResult] = await Promise.all([
       supabase
         .from("households")
         .select("id, name, monthly_budget, created_at")
@@ -37,20 +37,20 @@ export async function GET(request: Request) {
         .from("household_members")
         .select("id, household_id, user_id, display_name, role, created_at")
         .eq("household_id", current.householdId)
-        .order("created_at", { ascending: true })
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("household_invitations")
+        .select("id, email, display_name, role, status, expires_at, created_at")
+        .eq("household_id", current.householdId)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false })
     ]);
 
     if (householdResult.error) throw householdResult.error;
     if (membersResult.error) throw membersResult.error;
-
-    const invitationsResult = await supabase
-      .from("household_invitations")
-      .select("id, email, display_name, role, status, expires_at, created_at")
-      .eq("household_id", current.householdId)
-      .eq("status", "pending")
-      .order("created_at", { ascending: false });
-
     if (invitationsResult.error) throw invitationsResult.error;
+
+    const invitations = invitationsResult.data ?? [];
 
     const members = await Promise.all(
       (membersResult.data ?? []).map(async (member) => ({
@@ -60,19 +60,6 @@ export async function GET(request: Request) {
       }))
     );
 
-    let invitations: unknown[] = [];
-    const invitationResult = await supabase
-      .from("household_invitations")
-      .select("id, email, display_name, role, status, expires_at, created_at")
-      .eq("household_id", current.householdId)
-      .eq("status", "pending")
-      .order("created_at", { ascending: false });
-
-    if (!invitationResult.error) {
-      invitations = invitationResult.data ?? [];
-    } else if (invitationResult.error.code !== "42P01") {
-      throw invitationResult.error;
-    }
 
     return NextResponse.json({
       data: {
