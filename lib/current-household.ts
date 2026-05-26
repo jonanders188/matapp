@@ -117,32 +117,23 @@ export async function requireCurrentHousehold(request: Request): Promise<Current
   const supabase = getSupabaseAdmin();
   const selectedHouseholdId = requestedHouseholdId(request);
 
-  let query = supabase
+  const { data: allMemberships, error: membershipError } = await supabase
     .from("household_members")
-    .select("household_id, role")
-    .eq("user_id", user.userId);
-
-  if (selectedHouseholdId) {
-    query = query.eq("household_id", selectedHouseholdId);
-  }
-
-  const { data: memberships, error: membershipError } = await query
-    .order("created_at", { ascending: true })
-    .limit(1);
+    .select("household_id, role, created_at")
+    .eq("user_id", user.userId)
+    .order("created_at", { ascending: true });
 
   if (membershipError) {
     throw membershipError;
   }
 
-  const membership = memberships?.[0];
+  const memberships = allMemberships ?? [];
+  const membership = selectedHouseholdId
+    ? memberships.find((row) => row.household_id === selectedHouseholdId) ?? memberships[0]
+    : memberships[0];
 
   if (!membership?.household_id) {
-    throw authError(
-      selectedHouseholdId
-        ? "Du er ikke medlem av den valgte husholdningen"
-        : "Brukeren er ikke medlem av en husholdning",
-      403
-    );
+    throw authError("Brukeren er ikke medlem av en husholdning", 403);
   }
 
   return {

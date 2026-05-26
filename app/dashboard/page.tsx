@@ -67,7 +67,20 @@ export default function DashboardPage() {
     const payload = await response.json().catch(() => null) as { data?: BasisPriceData; error?: string } | null;
 
     if (!response.ok) {
-      setError(payload?.error ?? "Kunne ikke hente prissammenligning");
+      const message = payload?.error ?? "Kunne ikke hente prissammenligning";
+
+      if (response.status === 403 && message.includes("ikke medlem")) {
+        const ensureResponse = await authFetch("/api/onboarding/ensure-household", { method: "POST" });
+        const ensurePayload = await ensureResponse.json().catch(() => null) as { data?: { household_id?: string }; error?: string } | null;
+
+        if (ensureResponse.ok && ensurePayload?.data?.household_id) {
+          window.localStorage.setItem("matmakt.activeHouseholdId", ensurePayload.data.household_id);
+          window.location.reload();
+          return;
+        }
+      }
+
+      setError(message);
       setLoading(false);
       return;
     }

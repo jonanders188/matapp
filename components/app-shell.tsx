@@ -158,6 +158,20 @@ export function AppShell({ active, children }: { active: string; children: React
           }
         }
 
+        // Første ordinære bruker skal ikke lande i "Ingen husholdning".
+        // Hvis brukeren er innlogget, men ikke medlem av noen husholdning,
+        // oppretter vi en Hjemme-husholdning og gjør brukeren til Eier/admin.
+        if (response.ok && households.length === 0 && !activeHousehold) {
+          const ensureResponse = await authFetch("/api/onboarding/ensure-household", { method: "POST" });
+          const ensurePayload = await ensureResponse.json().catch(() => null) as { data?: { household_id?: string }; error?: string } | null;
+
+          if (ensureResponse.ok && ensurePayload?.data?.household_id) {
+            window.localStorage.setItem("matmakt.activeHouseholdId", ensurePayload.data.household_id);
+            window.location.reload();
+            return;
+          }
+        }
+
         setAccess({
           loading: false,
           canUseApp: Boolean(payload?.data?.capabilities?.canUseApp),
