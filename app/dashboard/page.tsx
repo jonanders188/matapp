@@ -69,16 +69,9 @@ export default function DashboardPage() {
     if (!response.ok) {
       const message = payload?.error ?? "Kunne ikke hente prissammenligning";
 
-      if (response.status === 403 && message.includes("ikke medlem")) {
-        const ensureResponse = await authFetch("/api/onboarding/ensure-household", { method: "POST" });
-        const ensurePayload = await ensureResponse.json().catch(() => null) as { data?: { household_id?: string }; error?: string } | null;
-
-        if (ensureResponse.ok && ensurePayload?.data?.household_id) {
-          window.localStorage.setItem("matmakt.activeHouseholdId", ensurePayload.data.household_id);
-          window.location.reload();
-          return;
-        }
-      }
+      // AppShell håndterer første gangs auto-opprettelse av husholdning via
+      // /api/onboarding/ensure-household. Dashboard skal ikke også prøve å opprette,
+      // fordi parallelle kall kan gi to default-husholdninger for samme bruker.
 
       setError(message);
       setLoading(false);

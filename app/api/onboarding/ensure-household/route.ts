@@ -5,87 +5,55 @@ import { getSupabaseAdmin } from "@/lib/supabase-server";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+function apiError(message: string, status: number) {
+  return Object.assign(new Error(message), { status });
+}
+
 function displayNameFromEmail(email: string | null) {
   if (!email) return "Eier";
   return email.split("@")[0]?.replace(/[._-]+/g, " ").trim() || "Eier";
 }
 
-function defaultHouseholdName(email: string | null) {
-  const normalized = String(email ?? "").trim().toLowerCase();
-  return normalized ? `${normalized} Home` : "Hjemme";
-}
-
-function requestedHouseholdId(request: Request) {
-  const fromHeader = request.headers.get("x-matmakt-household-id")?.trim();
-  if (fromHeader) return fromHeader;
-
-  try {
-    const url = new URL(request.url);
-    return url.searchParams.get("household_id")?.trim() || null;
-  } catch {
-    return null;
-  }
-}
+type EnsureUserHouseholdRow = {
+  household_id: string;
+  household_name: string | null;
+  role: string | null;
+  created: boolean | null;
+};
 
 export async function POST(request: Request) {
   try {
     const user = await requireAuthenticatedUser(request);
     const supabase = getSupabaseAdmin();
-    const selectedHouseholdId = requestedHouseholdId(request);
 
-    // Ikke la en gammel aktiv husholdning i localStorage blokkere en ny bruker.
-    // Vi henter alltid alle medlemskap først, velger valgt husholdning hvis den er gyldig,
-    // ellers første reelle medlemskap. Hvis ingen finnes, oppretter vi Hjemme.
-    const { data: memberships, error: existingError } = await supabase
-      .from("household_members")
-      .select("household_id, role, created_at")
-      .eq("user_id", user.userId)
-      .order("created_at", { ascending: true });
+    // Forstegangsoppretting ma vaere atomisk. DB-funksjonen tar advisory lock per
+    // user_id, sjekker eksisterende medlemskap og oppretter bare hvis ingen finnes.
+    const { data, error } = await supabase.rpc("ensure_user_household", {
+      p_user_id: user.userId,
+      p_email: user.email,
+      p_display_name: displayNameFromEmail(user.email)
+    });
 
-    if (existingError) throw existingError;
-
-    const existingMemberships = memberships ?? [];
-    const existing = selectedHouseholdId
-      ? existingMemberships.find((membership) => membership.household_id === selectedHouseholdId) ?? existingMemberships[0]
-      : existingMemberships[0];
-
-    if (existing?.household_id) {
-      return NextResponse.json({
-        data: {
-          household_id: existing.household_id,
-          role: existing.role ?? "member",
-          created: false
-        }
-      });
+    if (error) {
+      if (error.code === "PGRST202" || /ensure_user_household/i.test(error.message ?? "")) {
+        throw apiError("Databasefunksjonen ensure_user_household mangler. Kjor supabase/patch-049-atomic-ensure-user-household.sql i riktig Supabase-prosjekt.", 500);
+      }
+      throw error;
     }
 
-    const { data: household, error: householdError } = await supabase
-      .from("households")
-      // Standardnavn er lett å kjenne igjen i admin, men kan endres av Eier/admin.
-      .insert({ name: defaultHouseholdName(user.email), monthly_budget: 0 })
-      .select("id, name")
-      .single();
-
-    if (householdError) throw householdError;
-
-    const { error: memberError } = await supabase
-      .from("household_members")
-      .insert({
-        household_id: household.id,
-        user_id: user.userId,
-        display_name: displayNameFromEmail(user.email),
-        role: "admin"
-      });
-
-    if (memberError) throw memberError;
+    const rows = (Array.isArray(data) ? data : []) as EnsureUserHouseholdRow[];
+    const result = rows[0];
+    if (!result?.household_id) {
+      throw apiError("Kunne ikke sikre husholdning for brukeren", 500);
+    }
 
     return NextResponse.json({
       data: {
-        household_id: household.id,
-        household_name: household.name,
-        role: "admin",
-        created: true,
-        next_action: "update_household"
+        household_id: result.household_id,
+        household_name: result.household_name,
+        role: result.role ?? "member",
+        created: Boolean(result.created),
+        next_action: result.created ? "update_household" : null
       }
     });
   } catch (error) {

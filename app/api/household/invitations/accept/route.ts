@@ -152,12 +152,13 @@ export async function POST(request: Request) {
       return jsonError("Invitasjonen kan ikke godkjennes lenger. Be om ny invitasjon.", 409);
     }
 
-    const role = invitation.role === "admin" ? "admin" : "member";
+    const invitedRole = invitation.role === "admin" ? "admin" : "member";
     const displayName = String(invitation.display_name ?? "").trim() || displayNameFromEmail(userEmail);
+    let effectiveRole = invitedRole;
 
     const { data: existingMembership, error: existingError } = await supabase
       .from("household_members")
-      .select("id")
+      .select("id, role")
       .eq("household_id", invitation.household_id)
       .eq("user_id", userResult.user.id)
       .maybeSingle();
@@ -168,9 +169,12 @@ export async function POST(request: Request) {
     }
 
     if (existingMembership?.id) {
+      // Brukeren er allerede medlem. Lukk invitasjonen, men ikke endre eksisterende
+      // rolle her; en stale/pending invitasjon skal ikke kunne nedgradere en admin.
+      effectiveRole = String(existingMembership.role ?? "member");
       const { error: updateError } = await supabase
         .from("household_members")
-        .update({ display_name: displayName, role })
+        .update({ display_name: displayName })
         .eq("id", existingMembership.id);
 
       if (updateError) {
@@ -184,16 +188,28 @@ export async function POST(request: Request) {
           household_id: invitation.household_id,
           user_id: userResult.user.id,
           display_name: displayName,
-          role
+          role: invitedRole
         });
 
       if (insertError) {
         if (insertError.code === "23505") {
+          const { data: repairedMembership, error: repairLookupError } = await supabase
+            .from("household_members")
+            .select("id, role")
+            .eq("household_id", invitation.household_id)
+            .eq("user_id", userResult.user.id)
+            .maybeSingle();
+
+          if (repairLookupError || !repairedMembership?.id) {
+            console.error("[api/household/invitations/accept] membership repair lookup", repairLookupError ?? insertError);
+            return jsonError("Kunne ikke aktivere medlemskapet", 500);
+          }
+
+          effectiveRole = String(repairedMembership.role ?? "member");
           const { error: repairError } = await supabase
             .from("household_members")
-            .update({ display_name: displayName, role })
-            .eq("household_id", invitation.household_id)
-            .eq("user_id", userResult.user.id);
+            .update({ display_name: displayName })
+            .eq("id", repairedMembership.id);
 
           if (repairError) {
             console.error("[api/household/invitations/accept] membership repair", repairError);
@@ -206,10 +222,14 @@ export async function POST(request: Request) {
       }
     }
 
-    // Keep this update minimal so it works even before optional timestamp columns are present.
     const { error: acceptedError } = await supabase
       .from("household_invitations")
-      .update({ status: "accepted" })
+      .update({
+        status: "accepted",
+        accepted_user_id: userResult.user.id,
+        accepted_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
       .eq("id", invitation.id);
 
     if (acceptedError) {
@@ -220,7 +240,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       data: {
         household_id: invitation.household_id,
-        role,
+        role: effectiveRole,
         email: userEmail
       },
       message: "Invitasjonen er godkjent."

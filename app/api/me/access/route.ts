@@ -35,47 +35,6 @@ function requestedHouseholdId(request: Request) {
   }
 }
 
-function displayNameFromEmail(email: string | null) {
-  if (!email) return "Eier";
-  return email.split("@")[0]?.replace(/[._-]+/g, " ").trim() || "Eier";
-}
-
-function defaultHouseholdName(email: string | null) {
-  const normalized = String(email ?? "").trim().toLowerCase();
-  return normalized ? `${normalized} Home` : "Hjemme";
-}
-
-async function createDefaultHouseholdForUser(user: { userId: string; email: string | null }) {
-  const supabase = getSupabaseAdmin();
-
-  const { data: household, error: householdError } = await supabase
-    .from("households")
-    // Standardnavn er lett å kjenne igjen i admin, men kan endres av Eier/admin.
-      .insert({ name: defaultHouseholdName(user.email), monthly_budget: 0 })
-    .select("id, name")
-    .single();
-
-  if (householdError) throw householdError;
-
-  const { error: memberError } = await supabase
-    .from("household_members")
-    .insert({
-      household_id: household.id,
-      user_id: user.userId,
-      display_name: displayNameFromEmail(user.email),
-      role: "admin"
-    });
-
-  if (memberError) throw memberError;
-
-  return {
-    household_id: household.id,
-    role: "admin",
-    display_name: displayNameFromEmail(user.email),
-    created_at: new Date().toISOString()
-  } satisfies HouseholdMemberRow;
-}
-
 export async function GET(request: Request) {
   try {
     const user = await requireAuthenticatedUser(request);
@@ -90,15 +49,11 @@ export async function GET(request: Request) {
 
     if (membershipError) throw membershipError;
 
-    let memberships = (membershipsRaw ?? []) as HouseholdMemberRow[];
+    const memberships = (membershipsRaw ?? []) as HouseholdMemberRow[];
 
-    // Første gang en registrert bruker logger inn uten husholdning,
-    // oppretter vi en standard "Hjemme"-husholdning og gjør brukeren til Eier/admin.
-    if (memberships.length === 0) {
-      const createdMembership = await createDefaultHouseholdForUser(user);
-      memberships = [createdMembership];
-    }
-
+    // /api/me/access skal være read-only. Automatisk opprettelse gjøres kun via
+    // /api/onboarding/ensure-household, slik at vi unngår at parallelle sidekall
+    // oppretter to default-husholdninger for samme nye bruker.
     const householdIds = [...new Set(memberships.map((membership) => membership.household_id).filter(Boolean))];
 
     let householdById = new Map<string, HouseholdRow>();
